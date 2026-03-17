@@ -29,6 +29,12 @@ let plannerCallCount = 0;
  */
 let approvalResultQueue: any[] = [];
 
+/** Tracks how many times the mock scribe agent function has been called. */
+let scribeCallCount = 0;
+
+/** Events the mock scribe will yield when iterated. */
+let scribeEventQueue: any[] = [];
+
 // ── Module mocks ───────────────────────────────────────────────────────────
 
 mock.module("../tools/plan-stage", () => ({
@@ -56,14 +62,19 @@ mock.module("../render-plan", () => ({
 }));
 
 mock.module("../execution-plan", () => ({
-  createExecutionPlan: (stages: any[]) => ({
-    stages,
-    markCompleted: () => {},
-    markFailed: () => {},
-    markRunning: () => {},
-    ready: () => [],
-    done: () => true,
-  }),
+  createExecutionPlan: (stageDefs: any[]) => {
+    const stagesMap = new Map(
+      stageDefs.map((s: any) => [s.id, { ...s, status: "pending" }]),
+    );
+    return {
+      stages: stagesMap,
+      markCompleted: () => {},
+      markFailed: () => {},
+      markRunning: () => {},
+      ready: () => [],
+      done: () => true,
+    };
+  },
 }));
 
 mock.module("../prompt-for-approval", () => ({
@@ -80,6 +91,16 @@ mock.module("../prompt-for-approval", () => ({
 
 mock.module("../executor", () => ({
   executePlan: async function* () {},
+}));
+
+mock.module("../scribe-runner", () => ({
+  createScribeRunner: () =>
+    async function* (_ctx: any) {
+      scribeCallCount++;
+      for (const event of scribeEventQueue) {
+        yield event;
+      }
+    },
 }));
 
 // ── Import under test (after mocks are registered) ────────────────────────
@@ -105,6 +126,8 @@ describe("createOrchestrator – SessionEvent", () => {
     plannerSideEffects = [];
     plannerCallCount = 0;
     approvalResultQueue = [];
+    scribeCallCount = 0;
+    scribeEventQueue = [];
   });
 
   // ── Initial session event (resume) ──────────────────────────────────────
@@ -315,7 +338,198 @@ describe("createOrchestrator – SessionEvent", () => {
         "phase_end:planning",
         "phase_start:executing",
         "phase_end:executing",
+        "phase_start:scribing",
+        "phase_end:scribing",
       ]);
     });
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+
+/** Push a stage onto the sink so planning succeeds and execution runs. */
+function addStage(id: string, deps: string[] = []) {
+  mockSink.stages.push({
+    id,
+    plan: `plan for ${id}`,
+    dependencies: deps,
+    queue: {},
+    systemPrompt: "",
+    tools: [],
+  });
+}
+
+describe("createOrchestrator – Scribing phase", () => {
+  beforeEach(() => {
+    mockSink.stages = [];
+    plannerEventQueue = [];
+    plannerSideEffects = [];
+    plannerCallCount = 0;
+    approvalResultQueue = [];
+    scribeCallCount = 0;
+    scribeEventQueue = [];
+  });
+
+  // ── phase_start / phase_end events emitted ──────────────────────────────
+
+  test("emits phase_start:scribing and phase_end:scribing when execution completes with stages", async () => {
+    plannerSideEffects[0] = () => addStage("stage-a");
+
+    const events = await collectEvents(
+      createOrchestrator().run({ prompt: "build something" }),
+    );
+
+    expect(events).toContainEqual({ kind: "phase_start", phase: "scribing" });
+    expect(events).toContainEqual({ kind: "phase_end", phase: "scribing" });
+  });
+
+  // ── Phase ordering ───────────────────────────────────────────────────────
+
+  test("scribing phase appears AFTER phase_end:executing and BEFORE the final session event", async () => {
+    plannerSideEffects[0] = () => addStage("stage-a");
+    plannerEventQueue = [
+      {
+        kind: "result",
+        text: "",
+        duration_ms: 10,
+        cost_usd: 0,
+        num_turns: 1,
+        session_id: "session-order-check",
+      },
+    ];
+
+    const events = await collectEvents(
+      createOrchestrator().run({ prompt: "build something" }),
+    );
+
+    const idxPhaseEndExecuting = events.findIndex(
+      (e) => e.kind === "phase_end" && e.phase === "executing",
+    );
+    const idxPhaseStartScribing = events.findIndex(
+      (e) => e.kind === "phase_start" && e.phase === "scribing",
+    );
+    const idxPhaseEndScribing = events.findIndex(
+      (e) => e.kind === "phase_end" && e.phase === "scribing",
+    );
+    const idxSession = events.findLastIndex((e) => e.kind === "session");
+
+    expect(idxPhaseStartScribing).toBeGreaterThan(idxPhaseEndExecuting);
+    expect(idxPhaseEndScribing).toBeGreaterThan(idxPhaseStartScribing);
+    expect(idxSession).toBeGreaterThan(idxPhaseEndScribing);
+  });
+
+  // ── Phase sequence ───────────────────────────────────────────────────────
+
+  test("phase sequence is planning → executing → scribing (single approval)", async () => {
+    plannerSideEffects[0] = () => addStage("stage-a");
+
+    const events = await collectEvents(
+      createOrchestrator().run({ prompt: "build something" }),
+    );
+
+    const phases = events
+      .filter((e) => e.kind === "phase_start" || e.kind === "phase_end")
+      .map((e) => `${e.kind}:${e.phase}`);
+
+    expect(phases).toEqual([
+      "phase_start:planning",
+      "phase_end:planning",
+      "phase_start:executing",
+      "phase_end:executing",
+      "phase_start:scribing",
+      "phase_end:scribing",
+    ]);
+  });
+
+  // ── Early-return path (no stages) ────────────────────────────────────────
+
+  test("scribe is NOT invoked when no stages are produced (early-return path)", async () => {
+    // mockSink.stages stays empty → orchestrator returns early
+
+    await collectEvents(
+      createOrchestrator().run({ prompt: "build something" }),
+    );
+
+    expect(scribeCallCount).toBe(0);
+  });
+
+  test("no scribing phase events are emitted on the early-return path", async () => {
+    // mockSink.stages stays empty → orchestrator returns before execution/scribing
+
+    const events = await collectEvents(
+      createOrchestrator().run({ prompt: "build something" }),
+    );
+
+    const scribingEvents = events.filter(
+      (e) => (e.kind === "phase_start" || e.kind === "phase_end") && e.phase === "scribing",
+    );
+    expect(scribingEvents).toHaveLength(0);
+  });
+
+  // ── Agent events from scribe are forwarded ───────────────────────────────
+
+  test("scribe agent events are wrapped and yielded with phase:'scribing'", async () => {
+    plannerSideEffects[0] = () => addStage("stage-a");
+    scribeEventQueue = [{ kind: "message", content: "Scribe output" }];
+
+    const events = await collectEvents(
+      createOrchestrator().run({ prompt: "build something" }),
+    );
+
+    expect(events).toContainEqual({
+      kind: "agent_event",
+      phase: "scribing",
+      event: { kind: "message", content: "Scribe output" },
+    });
+  });
+});
+
+// ── buildScribePrompt unit tests ──────────────────────────────────────────
+
+const { buildScribePrompt } = await import("../orchestrator");
+
+describe("buildScribePrompt", () => {
+  const mockPlan = {
+    stages: new Map([
+      [
+        "stage-a",
+        { id: "stage-a", plan: "Write tests", dependencies: [], status: "completed" },
+      ],
+      [
+        "stage-b",
+        { id: "stage-b", plan: "Write impl", dependencies: ["stage-a"], status: "failed" },
+      ],
+    ]),
+  } as any;
+
+  test("includes the original user prompt under '## Original Request'", () => {
+    const result = buildScribePrompt("my request", mockPlan, "plan text");
+    expect(result).toContain("## Original Request");
+    expect(result).toContain("my request");
+  });
+
+  test("includes the rendered plan under '## Plan'", () => {
+    const result = buildScribePrompt("req", mockPlan, "rendered plan text");
+    expect(result).toContain("## Plan");
+    expect(result).toContain("rendered plan text");
+  });
+
+  test("includes stage id, status, dependencies and plan text for each stage", () => {
+    const result = buildScribePrompt("req", mockPlan, "plan text");
+    expect(result).toContain("### Stage: stage-a");
+    expect(result).toContain("**Status:** completed");
+    expect(result).toContain("**Dependencies:** none");
+    expect(result).toContain("Write tests");
+    expect(result).toContain("### Stage: stage-b");
+    expect(result).toContain("**Status:** failed");
+    expect(result).toContain("**Dependencies:** stage-a");
+    expect(result).toContain("Write impl");
+  });
+
+  test("ends with the standard scribe instruction", () => {
+    const result = buildScribePrompt("req", mockPlan, "plan text");
+    expect(result).toContain(
+      "Please validate the implementation and write a memory file documenting this work.",
+    );
   });
 });

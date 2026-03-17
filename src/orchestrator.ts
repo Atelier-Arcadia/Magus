@@ -1,15 +1,16 @@
 import type { AgentEvent } from "./agent";
 import { createPlanner } from "./agents/planner";
-import { createExecutionPlan, type ExecutionPlan } from "./execution-plan";
+import { createExecutionPlan, type ExecutionPlan, type Stage } from "./execution-plan";
 import { executePlan, type ExecutorEvent } from "./executor";
 import { createMessageQueue } from "./message-queue";
 import { createApprovalRequest, type ApprovalResult } from "./prompt-for-approval";
 import { renderExecutionPlan } from "./render-plan";
+import { createScribeRunner } from "./scribe-runner";
 import { createStageSink } from "./tools/plan-stage";
 
-// ── Orchestrator events ─────────────────────────────────────────────────────
+// ── Orchestrator events ────────────────────────────────────────────────────────────────────────
 
-export type OrchestratorPhase = "planning" | "executing" | "done";
+export type OrchestratorPhase = "planning" | "executing" | "scribing" | "done";
 
 export type PhaseStartEvent = {
   kind: "phase_start";
@@ -28,12 +29,12 @@ export type AgentStreamEvent = {
 };
 
 /**
- * Emitted after planning completes to request the user’s approval.
+ * Emitted after planning completes to request the user's approval.
  *
  * The consumer should:
  *  1. Display `renderedPlan` to the user.
  *  2. Ask whether to approve or continue refining.
- *  3. Call `resolve()` with the user’s decision.
+ *  3. Call `resolve()` with the user's decision.
  *
  * The orchestrator blocks on this event until `resolve` is called.
  */
@@ -58,7 +59,7 @@ export type OrchestratorEvent =
   | ExecutorEvent;
 
 
-// ── Orchestrator ────────────────────────────────────────────────────────────
+// ── Orchestrator ────────────────────────────────────────────────────────────────────────────────
 
 export type OrchestratorContext = {
   prompt: string;
@@ -74,10 +75,54 @@ export type Orchestrator = {
   run(context: OrchestratorContext): AsyncGenerator<OrchestratorEvent>;
 };
 
+// ── Pure helpers ────────────────────────────────────────────────────────────────────────
+
+function renderStageSection(stage: Stage): string {
+  const deps =
+    stage.dependencies.length > 0 ? stage.dependencies.join(", ") : "none";
+  return [
+    `### Stage: ${stage.id}`,
+    `**Status:** ${stage.status}`,
+    `**Dependencies:** ${deps}`,
+    "**Plan:**",
+    stage.plan,
+    "",
+  ].join("\n");
+}
+
+export function buildScribePrompt(
+  userPrompt: string,
+  plan: ExecutionPlan,
+  renderedPlan: string,
+): string {
+  const stageDetails = Array.from(plan.stages.values())
+    .map(renderStageSection)
+    .join("\n");
+
+  return [
+    "# Execution Report",
+    "",
+    "## Original Request",
+    userPrompt,
+    "",
+    "## Plan",
+    renderedPlan,
+    "",
+    "## Stage Details",
+    stageDetails,
+    "---",
+    "",
+    "Please validate the implementation and write a memory file documenting this work.",
+  ].join("\n");
+}
+
+// ── Factory ──────────────────────────────────────────────────────────────────────────────────
+
 export function createOrchestrator(): Orchestrator {
   const queue = createMessageQueue();
   const sink = createStageSink();
   const planner = createPlanner(queue, sink);
+  const scribe = createScribeRunner();
 
   let plannerSessionId: string | undefined;
 
@@ -85,13 +130,13 @@ export function createOrchestrator(): Orchestrator {
     async *run(context: OrchestratorContext): AsyncGenerator<OrchestratorEvent> {
       let prompt = context.prompt;
 
-      // ── Resume: seed plannerSessionId and announce it to consumers ──────
+      // ── Resume: seed plannerSessionId and announce it to consumers ──────────
       if (context.sessionId) {
         plannerSessionId = context.sessionId;
         yield { kind: "session", sessionId: context.sessionId };
       }
 
-      // ── Planning loop (repeats until the user approves) ───────────────────
+      // ── Planning loop (repeats until the user approves) ─────────────────────
       let approvedPlan: ExecutionPlan | undefined;
       let previousPlan: ExecutionPlan | undefined;
 
@@ -155,7 +200,7 @@ export function createOrchestrator(): Orchestrator {
         }
       }
 
-      // ── Execution phase ─────────────────────────────────────────────────
+      // ── Execution phase ─────────────────────────────────────────────────────
       yield { kind: "phase_start", phase: "executing" };
 
       for await (const event of executePlan(approvedPlan, context.cwd)) {
@@ -164,7 +209,22 @@ export function createOrchestrator(): Orchestrator {
 
       yield { kind: "phase_end", phase: "executing" };
 
-      // ── Final session event ──────────────────────────────────────────────
+      // ── Scribe phase ───────────────────────────────────────────────────────────
+      const scribePrompt = buildScribePrompt(
+        context.prompt,
+        approvedPlan,
+        renderExecutionPlan(approvedPlan),
+      );
+
+      yield { kind: "phase_start", phase: "scribing" };
+
+      for await (const event of scribe({ prompt: scribePrompt, cwd: context.cwd })) {
+        yield { kind: "agent_event", phase: "scribing", event };
+      }
+
+      yield { kind: "phase_end", phase: "scribing" };
+
+      // ── Final session event ────────────────────────────────────────────────────
       if (plannerSessionId) {
         yield { kind: "session", sessionId: plannerSessionId };
       }
