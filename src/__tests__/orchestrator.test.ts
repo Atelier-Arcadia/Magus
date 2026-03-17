@@ -14,11 +14,20 @@ const mockSink = { stages: [] as any[] };
 let plannerEventQueue: any[] = [];
 
 /**
- * Optional side-effect run at the START of the mock planner's body (before
- * any yields). Use this to push items into mockSink.stages after the
- * orchestrator has already zeroed it out.
+ * Side-effects run at the START of each planner invocation (before any
+ * yields). Indexed by invocation count — the first call uses index 0, etc.
+ * Falls back to null (no side-effect) for invocations beyond the array length.
  */
-let plannerSideEffect: (() => void) | null = null;
+let plannerSideEffects: ((() => void) | null)[] = [];
+
+/** Tracks how many times the mock planner has been invoked. */
+let plannerCallCount = 0;
+
+/**
+ * Queue of approval results. Each call to `createApprovalRequest` shifts
+ * the next result off the front. When empty, defaults to `{ approved: true }`.
+ */
+let approvalResultQueue: any[] = [];
 
 // ── Module mocks ───────────────────────────────────────────────────────────
 
@@ -33,7 +42,9 @@ mock.module("../message-queue", () => ({
 mock.module("../agents/planner", () => ({
   createPlanner: () =>
     async function* (_ctx: any) {
-      plannerSideEffect?.();
+      const idx = plannerCallCount++;
+      const sideEffect = plannerSideEffects[idx] ?? null;
+      sideEffect?.();
       for (const event of plannerEventQueue) {
         yield event;
       }
@@ -56,10 +67,15 @@ mock.module("../execution-plan", () => ({
 }));
 
 mock.module("../prompt-for-approval", () => ({
-  createApprovalRequest: () => ({
-    promise: Promise.resolve({ approved: true }),
-    resolve: () => {},
-  }),
+  createApprovalRequest: () => {
+    const result = approvalResultQueue.length > 0
+      ? approvalResultQueue.shift()
+      : { approved: true };
+    return {
+      promise: Promise.resolve(result),
+      resolve: () => {},
+    };
+  },
 }));
 
 mock.module("../executor", () => ({
@@ -86,7 +102,9 @@ describe("createOrchestrator – SessionEvent", () => {
   beforeEach(() => {
     mockSink.stages = [];
     plannerEventQueue = [];
-    plannerSideEffect = null;
+    plannerSideEffects = [];
+    plannerCallCount = 0;
+    approvalResultQueue = [];
   });
 
   // ── Initial session event (resume) ──────────────────────────────────────
@@ -156,7 +174,7 @@ describe("createOrchestrator – SessionEvent", () => {
   describe("final session event after execution completes", () => {
     test("emits session event as the last event after execution when planner captured a session_id", async () => {
       // Push a stage so the orchestrator proceeds to execution
-      plannerSideEffect = () => {
+      plannerSideEffects[0] = () => {
         mockSink.stages.push({
           id: "some-stage",
           plan: "do something",
@@ -188,7 +206,7 @@ describe("createOrchestrator – SessionEvent", () => {
     });
 
     test("does not emit a final session event after execution when planner produced no session_id", async () => {
-      plannerSideEffect = () => {
+      plannerSideEffects[0] = () => {
         mockSink.stages.push({
           id: "some-stage",
           plan: "do something",
@@ -206,6 +224,98 @@ describe("createOrchestrator – SessionEvent", () => {
 
       const sessionEvents = events.filter((e) => e.kind === "session");
       expect(sessionEvents).toHaveLength(0);
+    });
+  });
+
+  // ── Implicit approval after feedback (planner confirms no changes) ────
+
+  describe("implicit approval when planner produces no new stages after feedback", () => {
+    test("proceeds to execution when planner re-runs with feedback but registers no new stages", async () => {
+      // First invocation: planner produces stages
+      plannerSideEffects[0] = () => {
+        mockSink.stages.push({
+          id: "some-stage",
+          plan: "do something",
+          dependencies: [],
+          queue: {},
+          systemPrompt: "",
+          tools: [],
+        });
+      };
+      // Second invocation: planner produces nothing (confirms previous plan)
+      plannerSideEffects[1] = null;
+
+      plannerEventQueue = [
+        {
+          kind: "result",
+          text: "",
+          duration_ms: 100,
+          cost_usd: 0,
+          num_turns: 1,
+          session_id: "session-feedback",
+        },
+      ];
+
+      // First approval: rejected with feedback. Second: never reached (auto-approved).
+      approvalResultQueue = [
+        { approved: false, feedback: "looks good, just confirming" },
+      ];
+
+      const events = await collectEvents(
+        createOrchestrator().run({ prompt: "test prompt" }),
+      );
+
+      const phaseStarts = events
+        .filter((e) => e.kind === "phase_start")
+        .map((e) => e.phase);
+
+      expect(phaseStarts).toContain("executing");
+    });
+
+    test("emits two planning phases before executing", async () => {
+      plannerSideEffects[0] = () => {
+        mockSink.stages.push({
+          id: "some-stage",
+          plan: "do something",
+          dependencies: [],
+          queue: {},
+          systemPrompt: "",
+          tools: [],
+        });
+      };
+      plannerSideEffects[1] = null;
+
+      plannerEventQueue = [
+        {
+          kind: "result",
+          text: "",
+          duration_ms: 100,
+          cost_usd: 0,
+          num_turns: 1,
+          session_id: "session-feedback",
+        },
+      ];
+
+      approvalResultQueue = [
+        { approved: false, feedback: "no changes needed" },
+      ];
+
+      const events = await collectEvents(
+        createOrchestrator().run({ prompt: "test prompt" }),
+      );
+
+      const phases = events
+        .filter((e) => e.kind === "phase_start" || e.kind === "phase_end")
+        .map((e) => `${e.kind}:${e.phase}`);
+
+      expect(phases).toEqual([
+        "phase_start:planning",
+        "phase_end:planning",
+        "phase_start:planning",
+        "phase_end:planning",
+        "phase_start:executing",
+        "phase_end:executing",
+      ]);
     });
   });
 });

@@ -93,6 +93,7 @@ export function createOrchestrator(): Orchestrator {
 
       // ── Planning loop (repeats until the user approves) ───────────────────
       let approvedPlan: ExecutionPlan | undefined;
+      let previousPlan: ExecutionPlan | undefined;
 
       while (!approvedPlan) {
         // Reset the sink so a re-plan starts fresh.
@@ -118,7 +119,13 @@ export function createOrchestrator(): Orchestrator {
 
         // ── Build the plan and request approval ───────────────────────────
         if (sink.stages.length === 0) {
-          // The planner didn't register any stages — nothing to approve.
+          if (previousPlan) {
+            // Feedback round where the planner confirmed no changes —
+            // treat the previous plan as implicitly approved.
+            approvedPlan = previousPlan;
+            break;
+          }
+          // First run and the planner didn't register any stages — nothing to do.
           if (plannerSessionId) {
             yield { kind: "session", sessionId: plannerSessionId };
           }
@@ -126,6 +133,7 @@ export function createOrchestrator(): Orchestrator {
         }
 
         const plan = createExecutionPlan(sink.stages);
+        previousPlan = plan;
         const renderedPlan = renderExecutionPlan(plan);
 
         const request = createApprovalRequest();
