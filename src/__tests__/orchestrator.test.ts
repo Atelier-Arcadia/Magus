@@ -35,6 +35,9 @@ let scribeCallCount = 0;
 /** Events the mock scribe will yield when iterated. */
 let scribeEventQueue: any[] = [];
 
+/** Calls captured by the mock savePlan. */
+let savePlanCalls: any[] = [];
+
 // ── Module mocks ───────────────────────────────────────────────────────────
 
 mock.module("../tools/plan-stage", () => ({
@@ -103,6 +106,13 @@ mock.module("../scribe-runner", () => ({
     },
 }));
 
+mock.module("../save-plan", () => ({
+  savePlan: async (opts: any) => {
+    savePlanCalls.push(opts);
+    return "/mocked/path/plan.md";
+  },
+}));
+
 // ── Import under test (after mocks are registered) ────────────────────────
 
 const { createOrchestrator } = await import("../orchestrator");
@@ -128,6 +138,7 @@ describe("createOrchestrator – SessionEvent", () => {
     approvalResultQueue = [];
     scribeCallCount = 0;
     scribeEventQueue = [];
+    savePlanCalls = [];
   });
 
   // ── Initial session event (resume) ──────────────────────────────────────
@@ -368,9 +379,10 @@ describe("createOrchestrator – Scribing phase", () => {
     approvalResultQueue = [];
     scribeCallCount = 0;
     scribeEventQueue = [];
+    savePlanCalls = [];
   });
 
-  // ── phase_start / phase_end events emitted ──────────────────────────────
+  // ── phase_start / phase_end events emitted ──────────────────────────
 
   test("emits phase_start:scribing and phase_end:scribing when execution completes with stages", async () => {
     plannerSideEffects[0] = () => addStage("stage-a");
@@ -531,5 +543,77 @@ describe("buildScribePrompt", () => {
     expect(result).toContain(
       "Please validate the implementation and write a memory file documenting this work.",
     );
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+
+describe("createOrchestrator \u2013 Plan saving", () => {
+  beforeEach(() => {
+    mockSink.stages = [];
+    plannerEventQueue = [];
+    plannerSideEffects = [];
+    plannerCallCount = 0;
+    approvalResultQueue = [];
+    scribeCallCount = 0;
+    scribeEventQueue = [];
+    savePlanCalls = [];
+  });
+
+  test("calls savePlan with rendered plan, prompt, and cwd after approval", async () => {
+    plannerSideEffects[0] = () => addStage("stage-a");
+
+    await collectEvents(
+      createOrchestrator().run({ prompt: "my test prompt", cwd: "/some/cwd" }),
+    );
+
+    expect(savePlanCalls[0]).toMatchObject({
+      renderedPlan: "Rendered Plan",
+      prompt: "my test prompt",
+      cwd: "/some/cwd",
+    });
+  });
+
+  test("calls savePlan on implicit approval (feedback loop with no new stages)", async () => {
+    // First invocation: planner produces stages
+    plannerSideEffects[0] = () => addStage("stage-a");
+    // Second invocation: planner produces nothing \u2192 implicit approval
+    plannerSideEffects[1] = null;
+
+    approvalResultQueue = [
+      { approved: false, feedback: "looks good, confirming" },
+    ];
+
+    await collectEvents(
+      createOrchestrator().run({ prompt: "my test prompt" }),
+    );
+
+    expect(savePlanCalls).toHaveLength(1);
+  });
+
+  test("does not call savePlan when no stages are produced (early return)", async () => {
+    // mockSink.stages stays empty \u2192 orchestrator returns before saving
+    await collectEvents(
+      createOrchestrator().run({ prompt: "my test prompt" }),
+    );
+
+    expect(savePlanCalls).toHaveLength(0);
+  });
+
+  test("continues to execution even if savePlan rejects", async () => {
+    mock.module("../save-plan", () => ({
+      savePlan: async () => {
+        throw new Error("disk full");
+      },
+    }));
+
+    plannerSideEffects[0] = () => addStage("stage-a");
+
+    const events = await collectEvents(
+      createOrchestrator().run({ prompt: "my test prompt" }),
+    );
+
+    expect(events).toContainEqual({ kind: "phase_start", phase: "executing" });
+    expect(events).toContainEqual({ kind: "phase_start", phase: "scribing" });
   });
 });

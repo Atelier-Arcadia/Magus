@@ -1,6 +1,7 @@
 import { createAgent } from "../agent";
 import { dateTool } from "../tools/date";
 import { editFileTool } from "../tools/edit";
+import { createFileTool } from "../tools/create-file";
 import type { MessageQueue } from "../message-queue";
 
 // ── System prompt ───────────────────────────────────────────────────────────
@@ -44,7 +45,7 @@ export function createScribe(queue: MessageQueue) {
   return createAgent({
     systemPrompt: SYSTEM_PROMPT,
     tools: ["Read", "Glob", "Grep"],
-    mcpTools: [dateTool(), editFileTool(queue)],
+    mcpTools: [dateTool(), createFileTool(queue), editFileTool(queue)],
     options: { model: "claude-sonnet-4-6" },
   });
 }

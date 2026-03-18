@@ -5,6 +5,7 @@ import { executePlan, type ExecutorEvent } from "./executor";
 import { createMessageQueue } from "./message-queue";
 import { createApprovalRequest, type ApprovalResult } from "./prompt-for-approval";
 import { renderExecutionPlan } from "./render-plan";
+import { savePlan } from "./save-plan";
 import { createScribeRunner } from "./scribe-runner";
 import { createStageSink } from "./tools/plan-stage";
 
@@ -200,7 +201,18 @@ export function createOrchestrator(): Orchestrator {
         }
       }
 
-      // ── Execution phase ─────────────────────────────────────────────────────
+      // ── Save approved plan (non-fatal) ─────────────────────────────────────────
+      try {
+        await savePlan({
+          renderedPlan: renderExecutionPlan(approvedPlan),
+          prompt: context.prompt,
+          cwd: context.cwd,
+        });
+      } catch {
+        // non-fatal — continue to execution
+      }
+
+      // ── Execution phase ──────────────────────────────────────────────────────────────────────
       yield { kind: "phase_start", phase: "executing" };
 
       for await (const event of executePlan(approvedPlan, context.cwd)) {
