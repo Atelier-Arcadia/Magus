@@ -86,13 +86,6 @@ export function createAgent(config: AgentConfig) {
   const allowedTools = [...config.tools, ...mcpToolNames];
 
   return async function* run(context: AgentContext): AsyncGenerator<AgentEvent> {
-    console.log("\n── Agent invocation ──────────────────────────────────────────");
-    console.log("System prompt:\n%s", config.systemPrompt);
-    console.log("\nPrompt:\n%s", context.prompt);
-    if (context.cwd) console.log("\nCWD: %s", context.cwd);
-    console.log("\nAllowed tools: %s", allowedTools.join(", "));
-    console.log("──────────────────────────────────────────────────────────────\n");
-
     for await (const message of query({
       prompt: context.prompt,
       options: {
