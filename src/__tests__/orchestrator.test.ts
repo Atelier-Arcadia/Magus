@@ -106,16 +106,18 @@ mock.module("../scribe-runner", () => ({
     },
 }));
 
-mock.module("../save-plan", () => ({
-  savePlan: async (opts: any) => {
-    savePlanCalls.push(opts);
-    return "/mocked/path/plan.md";
-  },
-}));
+// savePlan is injected via createOrchestrator({ savePlan }) — no mock.module needed.
 
 // ── Import under test (after mocks are registered) ────────────────────────
 
-const { createOrchestrator } = await import("../orchestrator");
+const { createOrchestrator: _createOrchestrator } = await import("../orchestrator");
+
+/** Wraps the real factory with the mock savePlan injected. */
+const mockSavePlan = async (opts: any) => {
+  savePlanCalls.push(opts);
+  return "/mocked/path/plan.md";
+};
+const createOrchestrator = () => _createOrchestrator({ savePlan: mockSavePlan });
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -601,16 +603,14 @@ describe("createOrchestrator \u2013 Plan saving", () => {
   });
 
   test("continues to execution even if savePlan rejects", async () => {
-    mock.module("../save-plan", () => ({
-      savePlan: async () => {
-        throw new Error("disk full");
-      },
-    }));
-
     plannerSideEffects[0] = () => addStage("stage-a");
 
+    const failingOrchestrator = _createOrchestrator({
+      savePlan: async () => { throw new Error("disk full"); },
+    });
+
     const events = await collectEvents(
-      createOrchestrator().run({ prompt: "my test prompt" }),
+      failingOrchestrator.run({ prompt: "my test prompt" }),
     );
 
     expect(events).toContainEqual({ kind: "phase_start", phase: "executing" });

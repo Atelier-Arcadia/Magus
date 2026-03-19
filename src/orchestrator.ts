@@ -119,7 +119,12 @@ export function buildScribePrompt(
 
 // ── Factory ──────────────────────────────────────────────────────────────────────────────────
 
-export function createOrchestrator(): Orchestrator {
+export type OrchestratorDeps = {
+  savePlan?: typeof savePlan;
+};
+
+export function createOrchestrator(deps: OrchestratorDeps = {}): Orchestrator {
+  const doSavePlan = deps.savePlan ?? savePlan;
   const queue = createMessageQueue();
   const sink = createStageSink();
   const planner = createPlanner(queue, sink);
@@ -203,7 +208,7 @@ export function createOrchestrator(): Orchestrator {
 
       // ── Save approved plan (non-fatal) ─────────────────────────────────────────
       try {
-        await savePlan({
+        await doSavePlan({
           renderedPlan: renderExecutionPlan(approvedPlan),
           prompt: context.prompt,
           cwd: context.cwd,

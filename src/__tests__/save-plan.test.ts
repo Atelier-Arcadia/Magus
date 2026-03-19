@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
-import { mkdirSync, writeFileSync } from "fs";
+import { mkdirSync } from "fs";
 import { rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 
 // ── Import under test ────────────────────────────────────────────────────────
 
-const { slugifyPrompt, buildPlanPath, savePlan } = await import("../save-plan");
+import { slugifyPrompt, buildPlanPath, savePlan } from "../save-plan";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

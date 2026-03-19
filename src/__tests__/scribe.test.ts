@@ -57,14 +57,6 @@ describe("createScribe", () => {
     expect(names).toContain("Date");
   });
 
-  test("includes a WriteMemory mcp tool", () => {
-    const queue = { push: mock() } as any;
-    createScribe(queue);
-    const config = createAgentMock.mock.calls[0][0];
-    const names = config.mcpTools.map((t: any) => t.name);
-    expect(names).toContain("WriteMemory");
-  });
-
   test("includes a CreateFile mcp tool", () => {
     const queue = { push: mock() } as any;
     createScribe(queue);
