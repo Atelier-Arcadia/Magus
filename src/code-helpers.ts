@@ -22,3 +22,50 @@ export function selectSessionId(
 ): string | undefined {
   return !hasResumed && resumeSessionId ? resumeSessionId : undefined;
 }
+
+/**
+ * Parse the value of the `--prompt` / `-p` flag from a CLI args array.
+ * When both forms are present, the one that appears first wins.
+ *
+ * @returns The prompt-file path string if found, otherwise `undefined`.
+ */
+export function parsePromptFlag(args: string[]): string | undefined {
+  const longIdx = args.indexOf("--prompt");
+  const shortIdx = args.indexOf("-p");
+  if (longIdx === -1 && shortIdx === -1) return undefined;
+  const idx =
+    longIdx === -1 ? shortIdx
+    : shortIdx === -1 ? longIdx
+    : Math.min(longIdx, shortIdx);
+  return args[idx + 1];
+}
+
+/**
+ * Check whether the `--auto-approve` boolean flag is present in a CLI args array.
+ *
+ * @returns `true` if `--auto-approve` appears exactly (no partial matches).
+ */
+export function parseAutoApprove(args: string[]): boolean {
+  return args.includes("--auto-approve");
+}
+
+/**
+ * Read prompt text from a file path or, when `promptFile` is `undefined`, from stdin.
+ * Trims surrounding whitespace from the result.
+ *
+ * @throws {Error} If the file does not exist, the file is empty, or stdin yields nothing.
+ */
+export async function readPrompt(promptFile: string | undefined): Promise<string> {
+  if (promptFile !== undefined) {
+    const file = Bun.file(promptFile);
+    if (!(await file.exists()))
+      throw new Error(`Prompt file not found: ${promptFile}`);
+    const text = (await file.text()).trim();
+    if (text.length === 0)
+      throw new Error(`Prompt file is empty: ${promptFile}`);
+    return text;
+  }
+  const text = (await Bun.stdin.text()).trim();
+  if (text.length === 0) throw new Error("No prompt was provided.");
+  return text;
+}

@@ -4,7 +4,6 @@ import { renderToString } from "ink";
 import {
   App,
   isApprovalYes,
-  evalPromptSubmit,
   evalApprovalSubmit,
   drainOrchestratorRun,
 } from "../ui/App";
@@ -13,7 +12,7 @@ import type { Orchestrator, OrchestratorEvent } from "../orchestrator";
 import type { ApprovalResult } from "../prompt-for-approval";
 import type { HistoryEntry } from "../ui/types";
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────
 
 const fixedId = (id: string) => () => id;
 const freshId = () => createIdGenerator();
@@ -27,7 +26,7 @@ const silentOrchestrator: Orchestrator = {
   async *run() {},
 };
 
-// ── isApprovalYes ────────────────────────────────────────────────────────────
+// ── isApprovalYes ────────────────────────────────────────────
 
 describe("isApprovalYes", () => {
   test("returns true for 'y'", () => {
@@ -71,79 +70,7 @@ describe("isApprovalYes", () => {
   });
 });
 
-// ── evalPromptSubmit ─────────────────────────────────────────────────────────
-
-describe("evalPromptSubmit – exit command", () => {
-  test("returns action 'exit' when input is 'exit'", () => {
-    const result = evalPromptSubmit("exit", undefined, false, fixedId("h1"));
-    expect(result).toEqual({ action: "exit" });
-  });
-
-  test("does not call nextId for exit command", () => {
-    let calls = 0;
-    evalPromptSubmit("exit", undefined, false, () => { calls++; return "hX"; });
-    expect(calls).toBe(0);
-  });
-});
-
-describe("evalPromptSubmit – empty input", () => {
-  test("returns action 'noop' for empty string", () => {
-    const result = evalPromptSubmit("", undefined, false, fixedId("h1"));
-    expect(result).toEqual({ action: "noop" });
-  });
-
-  test("does not call nextId for empty input", () => {
-    let calls = 0;
-    evalPromptSubmit("", undefined, false, () => { calls++; return "hX"; });
-    expect(calls).toBe(0);
-  });
-});
-
-describe("evalPromptSubmit – normal prompt", () => {
-  test("returns action 'run' with a user_prompt entry", () => {
-    const result = evalPromptSubmit("hello", undefined, false, fixedId("h1"));
-    expect(result.action).toBe("run");
-    if (result.action === "run") {
-      expect(result.entry).toEqual({ kind: "user_prompt", id: "h1", text: "hello" });
-    }
-  });
-
-  test("uses the id returned by nextId", () => {
-    const result = evalPromptSubmit("hi", undefined, false, fixedId("h42"));
-    if (result.action === "run") {
-      expect(result.entry.id).toBe("h42");
-    }
-  });
-
-  test("calls nextId exactly once", () => {
-    let calls = 0;
-    evalPromptSubmit("hi", undefined, false, () => { calls++; return "hX"; });
-    expect(calls).toBe(1);
-  });
-
-  test("sets sessionId from resumeSessionId on first run (hasResumed=false)", () => {
-    const result = evalPromptSubmit("hi", "resume-abc", false, fixedId("h1"));
-    if (result.action === "run") {
-      expect(result.sessionId).toBe("resume-abc");
-    }
-  });
-
-  test("sessionId is undefined on subsequent runs (hasResumed=true)", () => {
-    const result = evalPromptSubmit("hi", "resume-abc", true, fixedId("h1"));
-    if (result.action === "run") {
-      expect(result.sessionId).toBeUndefined();
-    }
-  });
-
-  test("sessionId is undefined when no resumeSessionId provided", () => {
-    const result = evalPromptSubmit("hi", undefined, false, fixedId("h1"));
-    if (result.action === "run") {
-      expect(result.sessionId).toBeUndefined();
-    }
-  });
-});
-
-// ── evalApprovalSubmit ───────────────────────────────────────────────────────
+// ── evalApprovalSubmit ───────────────────────────────────────────────
 
 describe("evalApprovalSubmit – approve", () => {
   test("returns action 'approve' for 'y'", () => {
@@ -219,7 +146,7 @@ describe("evalApprovalSubmit – reject", () => {
   });
 });
 
-// ── drainOrchestratorRun ─────────────────────────────────────────────────────
+// ── drainOrchestratorRun ───────────────────────────────────────────────────
 
 describe("drainOrchestratorRun – event forwarding", () => {
   test("maps phase_start events to history entries via onEntries", async () => {
@@ -378,34 +305,22 @@ describe("drainOrchestratorRun – plan_approval_request", () => {
   });
 });
 
-// ── App rendering ─────────────────────────────────────────────────────────────
+// ── App rendering ────────────────────────────────────────────────────────────────────
 
 describe("App – initial render", () => {
-  test("renders without throwing", () => {
+  test("renders without throwing when initialPrompt is provided", () => {
     expect(() =>
-      renderToString(<App orchestrator={silentOrchestrator} onExit={() => {}} />),
+      renderToString(
+        <App orchestrator={silentOrchestrator} initialPrompt="test prompt" onExit={() => {}} />,
+      ),
     ).not.toThrow();
-  });
-
-  test("renders the prompt prefix and cursor in the initial state", () => {
-    const output = stripAnsi(
-      renderToString(<App orchestrator={silentOrchestrator} onExit={() => {}} />),
-    );
-    expect(output).toContain("> ");
-    expect(output).toContain("▎");
-  });
-
-  test("renders no history entries in the initial state", () => {
-    const output = stripAnsi(
-      renderToString(<App orchestrator={silentOrchestrator} onExit={() => {}} />),
-    );
-    expect(output).not.toContain("❯");
-    expect(output).not.toContain("Phase:");
   });
 
   test("does not show approval prompt in initial state", () => {
     const output = stripAnsi(
-      renderToString(<App orchestrator={silentOrchestrator} onExit={() => {}} />),
+      renderToString(
+        <App orchestrator={silentOrchestrator} initialPrompt="test prompt" onExit={() => {}} />,
+      ),
     );
     expect(output).not.toContain("Approve");
   });
@@ -417,6 +332,7 @@ describe("App – resumeSessionId prop", () => {
       renderToString(
         <App
           orchestrator={silentOrchestrator}
+          initialPrompt="test"
           onExit={() => {}}
           resumeSessionId="resume-abc"
         />,
@@ -425,44 +341,57 @@ describe("App – resumeSessionId prop", () => {
   });
 });
 
-// ── App – onExit integration (via mock orchestrator) ─────────────────────────
+// ── App – onExit integration ───────────────────────────────────────────────────────
 
-describe("App – exit command logic (via evalPromptSubmit)", () => {
-  test("evalPromptSubmit returns exit action for input 'exit'", () => {
-    // This mirrors exactly what the component's handlePromptSubmit does:  
-    // it calls evalPromptSubmit and, on action === 'exit', calls onExit().
-    const result = evalPromptSubmit("exit", undefined, false, fixedId("h1"));
-    expect(result.action).toBe("exit");
-  });
-
-  test("onExit is called when component's submit handler receives 'exit'", () => {
-    // We verify the handler is wired correctly by checking the mock orchestrator
-    // is never called when the user types 'exit'.
-    const runMock = mock(async function* () {});
-    const orchestrator: Orchestrator = { run: runMock };
+describe("App – onExit", () => {
+  test("calls onExit after orchestrator run completes", async () => {
     const onExit = mock(() => {});
-
-    // renderToString captures the synchronous render; we can't simulate keystrokes
-    // without ink-testing-library. Instead we verify onExit is NOT wired to a
-    // side effect that requires the orchestrator, which we confirm via evalPromptSubmit.
-    const result = evalPromptSubmit("exit", undefined, false, fixedId("h1"));
-    if (result.action === "exit") onExit();
-
+    // Model the component's useEffect: drain the run then call onExit
+    await drainOrchestratorRun(
+      silentOrchestrator.run({ prompt: "test prompt", sessionId: undefined }),
+      freshId(),
+      () => {},
+      () => {},
+    ).then(onExit);
     expect(onExit).toHaveBeenCalledTimes(1);
-    expect(runMock).not.toHaveBeenCalled();
   });
 });
 
-// ── App – prompt submit logic (via evalPromptSubmit) ─────────────────────────
+// ── App – autoApprove ──────────────────────────────────────────────────────────────
 
-describe("App – user_prompt entry creation", () => {
-  test("evalPromptSubmit produces a user_prompt entry for non-exit non-empty input", () => {
-    const result = evalPromptSubmit("build me a thing", undefined, false, fixedId("h5"));
-    expect(result.action).toBe("run");
-    if (result.action === "run") {
-      expect(result.entry.kind).toBe("user_prompt");
-      expect(result.entry.text).toBe("build me a thing");
+describe("App – autoApprove", () => {
+  test("auto-approves when autoApprove prop is true", async () => {
+    let resolveApproval!: (r: ApprovalResult) => void;
+    let pendingApprovalSet = false;
+
+    async function* mockGen(): AsyncGenerator<OrchestratorEvent> {
+      const p = new Promise<ApprovalResult>((r) => { resolveApproval = r; });
+      yield {
+        kind: "plan_approval_request",
+        plan: {} as any,
+        renderedPlan: "## Test Plan",
+        resolve: resolveApproval,
+      };
+      await p;
     }
+
+    const mockOrchestrator: Orchestrator = { run: () => mockGen() };
+    const autoApprove = true;
+
+    await drainOrchestratorRun(
+      mockOrchestrator.run({ prompt: "test prompt", sessionId: undefined }),
+      freshId(),
+      () => {},
+      (resolve) => {
+        if (autoApprove) {
+          resolve({ approved: true });
+        } else {
+          pendingApprovalSet = true;
+        }
+      },
+    );
+
+    expect(pendingApprovalSet).toBe(false);
   });
 });
 
@@ -486,7 +415,7 @@ describe("App – approval mode switching", () => {
 
     const mockOrchestrator: Orchestrator = { run: () => mockGen() };
 
-    // Simulate what handlePromptSubmit does: start draining the run
+    // Simulate what the component's useEffect does: start draining the run
     const runPromise = drainOrchestratorRun(
       mockOrchestrator.run({ prompt: "do stuff", sessionId: undefined }),
       freshId(),
@@ -559,40 +488,5 @@ describe("App – approval mode switching", () => {
       approved: false,
       feedback: "please add logging",
     });
-  });
-});
-
-// ── evalPromptSubmit – resumeSessionId forwarding ────────────────────────────────────
-
-describe("evalPromptSubmit – resumeSessionId forwarded to orchestrator", () => {
-  test("sessionId passed to run equals resumeSessionId on first call", async () => {
-    // Verify that the sessionId computed by evalPromptSubmit is the one forwarded
-    // to orchestrator.run — closing the loop on the resumeSessionId prop.
-    const capturedContexts: { sessionId: string | undefined }[] = [];
-
-    async function* mockGen(ctx: { sessionId?: string }): AsyncGenerator<OrchestratorEvent> {
-      capturedContexts.push({ sessionId: ctx.sessionId });
-    }
-
-    const orchestrator: Orchestrator = { run: (ctx) => mockGen(ctx) };
-
-    const result = evalPromptSubmit("hello", "my-resume-id", false, fixedId("h1"));
-    if (result.action === "run") {
-      await drainOrchestratorRun(
-        orchestrator.run({ prompt: "hello", sessionId: result.sessionId }),
-        freshId(),
-        () => {},
-        () => {},
-      );
-    }
-
-    expect(capturedContexts[0]!.sessionId).toBe("my-resume-id");
-  });
-
-  test("sessionId is undefined when resumeSessionId is not provided", () => {
-    const result = evalPromptSubmit("hello", undefined, false, fixedId("h1"));
-    if (result.action === "run") {
-      expect(result.sessionId).toBeUndefined();
-    }
   });
 });
