@@ -50,6 +50,15 @@ export function parseAutoApprove(args: string[]): boolean {
 }
 
 /**
+ * Check whether the `-H` / `--hide-tools` boolean flag is present in a CLI args array.
+ *
+ * @returns `true` if `-H` or `--hide-tools` appears exactly (no partial matches).
+ */
+export function parseHideTools(args: string[]): boolean {
+  return args.includes("-H") || args.includes("--hide-tools");
+}
+
+/**
  * Read prompt text from a file path or, when `promptFile` is `undefined`, from stdin.
  * Trims surrounding whitespace from the result.
  *

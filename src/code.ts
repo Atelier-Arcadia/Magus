@@ -1,6 +1,7 @@
+import { createReadStream } from "node:fs";
 import { createOrchestrator } from "./orchestrator";
 import { mapOrchestratorEvent, createIdGenerator } from "./ui/mapEvent";
-import { parseResumeSessionId, parsePromptFlag, parseAutoApprove, readPrompt } from "./code-helpers";
+import { parseResumeSessionId, parsePromptFlag, parseAutoApprove, parseHideTools, readPrompt } from "./code-helpers";
 import type { HistoryEntry } from "./ui/types";
 import type { OrchestratorEvent } from "./orchestrator";
 
@@ -36,10 +37,14 @@ async function drainEvents(
   gen: AsyncGenerator<OrchestratorEvent>,
   nextId: () => string,
   autoApprove: boolean,
+  hideTools: boolean,
 ): Promise<void> {
   for await (const event of gen) {
     const entries = mapOrchestratorEvent(event, nextId);
     for (const entry of entries) {
+      if (hideTools && (entry.kind === "tool_use" || entry.kind === "tool_error")) {
+        continue;
+      }
       console.log(formatEntry(entry));
     }
 
@@ -62,18 +67,17 @@ async function drainEvents(
   }
 }
 
-// ── stdin prompt (for approval) ──────────────────────────────────────────────
+// ── Terminal prompt (for approval) ───────────────────────────────────────────
 
+// Reads directly from /dev/tty instead of process.stdin to avoid
+// conflicts with Bun's event loop and stdin stream state management.
 function promptUser(question: string): Promise<string> {
-  return new Promise((resolve) => {
+  return new Promise<string>((resolve) => {
     process.stdout.write(question);
-    let data = "";
-    process.stdin.setEncoding("utf8");
-    process.stdin.resume();
-    process.stdin.once("data", (chunk) => {
-      data += chunk;
-      process.stdin.pause();
-      resolve(data.trimEnd());
+    const tty = createReadStream("/dev/tty", { encoding: "utf8" });
+    tty.once("data", (chunk) => {
+      tty.destroy();
+      resolve(String(chunk).trimEnd());
     });
   });
 }
@@ -84,6 +88,7 @@ const args = process.argv.slice(2);
 const resumeSessionId = parseResumeSessionId(args);
 const promptFile = parsePromptFlag(args);
 const autoApprove = parseAutoApprove(args);
+const hideTools = parseHideTools(args);
 const prompt = await readPrompt(promptFile);
 const orchestrator = createOrchestrator();
 const nextId = createIdGenerator();
@@ -94,6 +99,7 @@ await drainEvents(
   orchestrator.run({ prompt, sessionId: resumeSessionId }),
   nextId,
   autoApprove,
+  hideTools,
 );
 
 process.exit(0);

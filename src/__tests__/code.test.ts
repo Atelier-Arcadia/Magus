@@ -4,6 +4,7 @@ import {
   selectSessionId,
   parsePromptFlag,
   parseAutoApprove,
+  parseHideTools,
   readPrompt,
 } from "../code-helpers";
 
@@ -117,6 +118,36 @@ describe("parseAutoApprove", () => {
 
   test("does not match partial string --auto", () => {
     expect(parseAutoApprove(["--auto"])).toBe(false);
+  });
+});
+
+// ── parseHideTools ──────────────────────────────────────────────────────────
+
+describe("parseHideTools", () => {
+  test("returns true when --hide-tools is present", () => {
+    expect(parseHideTools(["--hide-tools"])).toBe(true);
+  });
+
+  test("returns true when -H is present", () => {
+    expect(parseHideTools(["-H"])).toBe(true);
+  });
+
+  test("returns false when neither flag is present", () => {
+    expect(parseHideTools([])).toBe(false);
+  });
+
+  test("returns true when flag appears alongside other flags", () => {
+    expect(
+      parseHideTools(["--verbose", "--hide-tools", "--output"]),
+    ).toBe(true);
+  });
+
+  test("does not match partial string --hide-tools-all", () => {
+    expect(parseHideTools(["--hide-tools-all"])).toBe(false);
+  });
+
+  test("does not match -h (lowercase)", () => {
+    expect(parseHideTools(["-h"])).toBe(false);
   });
 });
 
