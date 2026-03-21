@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { createIdGenerator, mapOrchestratorEvent } from "../ui/mapEvent";
 import { formatToolCall } from "../format-tool-call";
 
+
 // ── ID generator ────────────────────────────────────────────────────────────
 
 describe("createIdGenerator", () => {
@@ -412,3 +413,5 @@ describe("mapOrchestratorEvent – purity", () => {
     expect(e2[0].id).toBe("h2");
   });
 });
+
+

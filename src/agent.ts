@@ -35,6 +35,7 @@ export type ResultEvent = {
   cost_usd: number;
   num_turns: number;
   session_id: string;
+  structured_output?: unknown;
 };
 
 export type ErrorEvent = {
@@ -105,7 +106,7 @@ export function createAgent(config: AgentConfig) {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function* mapSdkMessage(message: SDKMessage): Generator<AgentEvent> {
+export function* mapSdkMessage(message: SDKMessage): Generator<AgentEvent> {
   switch (message.type) {
     case "assistant": {
       // A single assistant turn can contain interleaved text and tool_use blocks.
@@ -150,6 +151,7 @@ function* mapSdkMessage(message: SDKMessage): Generator<AgentEvent> {
           cost_usd: message.total_cost_usd,
           num_turns: message.num_turns,
           session_id: message.session_id,
+          structured_output: message.structured_output,
         };
       } else {
         yield {

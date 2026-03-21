@@ -1,6 +1,4 @@
 import { describe, expect, test, mock } from "bun:test";
-import { createMessageQueue } from "../message-queue";
-import { createStageSink } from "../tools/plan-stage";
 
 // Capture the config passed to createAgent by mocking the module
 const createAgentMock = mock((config: any) => config);
@@ -12,28 +10,68 @@ mock.module("../agent", () => ({
 const { createPlanner } = await import("../agents/planner");
 
 describe("createPlanner", () => {
-  test("passes options with model claude-opus-4-6 to createAgent", () => {
-    const queue = createMessageQueue();
-    const sink = createStageSink();
-
-    createPlanner(queue, sink);
-
+  test("calls createPlanner with no arguments", () => {
+    createAgentMock.mockClear();
+    createPlanner();
     expect(createAgentMock).toHaveBeenCalledTimes(1);
-    const config = createAgentMock.mock.calls[0][0];
-    expect(config.options).toEqual({ model: "claude-opus-4-6" });
   });
 
-  test("includes systemPrompt, tools, and mcpTools in config", () => {
-    const queue = createMessageQueue();
-    const sink = createStageSink();
-
+  test("passes model claude-opus-4-6 in options", () => {
     createAgentMock.mockClear();
-    createPlanner(queue, sink);
+    createPlanner();
+    const config = createAgentMock.mock.calls[0][0];
+    expect(config.options.model).toBe("claude-opus-4-6");
+  });
 
+  test("passes tools [Read, Glob, Grep] and no mcpTools", () => {
+    createAgentMock.mockClear();
+    createPlanner();
+    const config = createAgentMock.mock.calls[0][0];
+    expect(config.tools).toEqual(["Read", "Glob", "Grep"]);
+    expect(config.mcpTools).toBeUndefined();
+  });
+
+  test("includes a non-empty systemPrompt string", () => {
+    createAgentMock.mockClear();
+    createPlanner();
     const config = createAgentMock.mock.calls[0][0];
     expect(config.systemPrompt).toBeString();
-    expect(config.tools).toEqual(["Read", "Glob", "Grep"]);
-    expect(config.mcpTools).toBeArrayOfSize(1);
+    expect(config.systemPrompt.length).toBeGreaterThan(0);
+  });
+
+  test("outputFormat has type json_schema", () => {
+    createAgentMock.mockClear();
+    createPlanner();
+    const config = createAgentMock.mock.calls[0][0];
+    expect(config.options.outputFormat).toBeDefined();
+    expect(config.options.outputFormat.type).toBe("json_schema");
+  });
+
+  test("outputFormat schema has required top-level properties summary, stages, open_questions", () => {
+    createAgentMock.mockClear();
+    createPlanner();
+    const config = createAgentMock.mock.calls[0][0];
+    const { schema } = config.options.outputFormat;
+    expect(schema.properties).toHaveProperty("summary");
+    expect(schema.properties).toHaveProperty("stages");
+    expect(schema.properties).toHaveProperty("open_questions");
+    expect(schema.required).toContain("summary");
+    expect(schema.required).toContain("stages");
+    expect(schema.required).toContain("open_questions");
+  });
+
+  test("outputFormat schema stages items have id, plan, dependencies properties", () => {
+    createAgentMock.mockClear();
+    createPlanner();
+    const config = createAgentMock.mock.calls[0][0];
+    const stageItems = config.options.outputFormat.schema.properties.stages.items;
+    expect(stageItems.properties).toHaveProperty("id");
+    expect(stageItems.properties).toHaveProperty("plan");
+    expect(stageItems.properties).toHaveProperty("dependencies");
+    expect(stageItems.required).toContain("id");
+    expect(stageItems.required).toContain("plan");
+    expect(stageItems.required).toContain("dependencies");
   });
 });
+
 

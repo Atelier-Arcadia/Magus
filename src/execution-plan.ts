@@ -1,4 +1,3 @@
-import type { AgentConfig } from "./agent";
 import type { MessageQueue } from "./message-queue";
 
 // ── Stage ───────────────────────────────────────────────────────────────────
@@ -11,9 +10,6 @@ export type Stage = {
 
   /** Human-readable description of the work this stage performs. */
   plan: string;
-
-  /** Agent configuration that will drive this stage's execution. */
-  agentConfig: AgentConfig;
 
   /** Message queue for capturing events produced during this stage. */
   queue: MessageQueue;
@@ -58,7 +54,6 @@ export type ExecutionPlan = {
 export type StageDefinition = {
   id: string;
   plan: string;
-  agentConfig: AgentConfig;
   queue: MessageQueue;
   dependencies?: string[];
 };
@@ -84,7 +79,6 @@ export function createExecutionPlan(
     stages.set(def.id, {
       id: def.id,
       plan: def.plan,
-      agentConfig: def.agentConfig,
       queue: def.queue,
       dependencies: def.dependencies ?? [],
       status: "pending",

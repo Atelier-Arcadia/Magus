@@ -1,6 +1,16 @@
 import { createAgent } from "../agent";
-import { planStageTool, type StageSink } from "../tools/plan-stage";
-import type { MessageQueue } from "../message-queue";
+
+// ── Structured output type ──────────────────────────────────────────────────
+
+export type PlannerOutput = {
+  summary: string;
+  stages: {
+    id: string;
+    plan: string;
+    dependencies: string[];
+  }[];
+  open_questions: string[];
+};
 
 // ── System prompt ───────────────────────────────────────────────────────────
 
@@ -30,58 +40,79 @@ Break the user's request into discrete, well-defined stages of work. Each stage 
 
 3. **Order** — Define the dependency edges between stages. A stage lists the IDs of all stages whose output it requires. Stages with no dependencies are roots of the DAG and can begin immediately.
 
-4. **Register** — You must call the PlanStage tool once for every stage in your plan. This is how the plan is recorded into the execution DAG. For each stage you must provide:
-   - \`id\` — a short, descriptive kebab-case identifier (e.g. "add-user-model", "update-api-routes").
-   - \`plan\` — a detailed description of the work in the stage you are planning, not the whole plan but specific enough for an execution agent to carry it out unambiguously. Explain what other work will be done concurrently by other agents to avoid duplicating work.  Include file paths, function names, type signatures, and any concrete details from your investigation.
-   - \`dependencies\` — an array of stage ids that must complete before this stage can start. Omit or pass [] for root stages.
-
-   You MUST call PlanStage for every stage before presenting the summary. Do not skip any stages — if it is not registered via PlanStage, it does not exist in the plan.
-
-5. **Present** — After all stages have been registered with PlanStage, present a summary to the user in the following format:
-
----
-
-# Output Format:
-
-<format>
-# Implementation Plan
-
-A brief summary of what the plan accomplishes and the overall approach.
-
-## Stages
-
-For each stage, present:
-
-### Stage: \`<stage-id>\`
-
-**Dependencies:** <comma-separated list of stage ids, or "none">
-**Description:**
-
-A brief recap of the stage's work (the full detail was already recorded via PlanStage).
-
-## Open Questions
-
-- A list of any uncertainties that the user could address.
-</format>
-
----
+4. **Output** — Your response will be captured as structured JSON with the following fields:
+   - \`summary\` — a brief description of what the plan accomplishes and the overall approach.
+   - \`stages\` — an array of stage objects, each with:
+     - \`id\` — a short, descriptive kebab-case identifier (e.g. "add-user-model", "update-api-routes").
+     - \`plan\` — a detailed description of the work in the stage. Include file paths, function names, type signatures, and concrete details from your investigation. Explain what other work will be done concurrently by other agents to avoid duplicating work.
+     - \`dependencies\` — an array of stage ids that must complete before this stage can start. Use an empty array for root stages.
+   - \`open_questions\` — a list of any uncertainties or ambiguities the user could address.
 
 ## Rules
 
-- You MUST call PlanStage for every stage. A stage only exists if it has been registered via the tool.
 - Every stage id must be a short, descriptive kebab-case string.
 - Be precise. Vague stages like "implement the feature that does the work" are not acceptable.
-- If the user's request is ambiguous, state your assumptions explicitly in the overview.
+- If the user's request is ambiguous, state your assumptions explicitly in the summary.
+- Produce only valid JSON matching the schema — do not include extra commentary outside the JSON.
 `;
+
+// ── Output schema ───────────────────────────────────────────────────────────
+
+const OUTPUT_SCHEMA = {
+  type: "object",
+  properties: {
+    summary: {
+      type: "string",
+      description: "Brief summary of what the plan accomplishes and the overall approach",
+    },
+    stages: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          id: {
+            type: "string",
+            description: "Short kebab-case identifier (e.g. 'add-user-model', 'update-api-routes')",
+          },
+          plan: {
+            type: "string",
+            description:
+              "Detailed description of the work this stage accomplishes. Include file paths, function names, type signatures, and concrete details. Explain what other work will be done concurrently by other agents to avoid duplicating work.",
+          },
+          dependencies: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              "IDs of stages that must complete before this one can begin. Empty array for root stages.",
+          },
+        },
+        required: ["id", "plan", "dependencies"],
+        additionalProperties: false,
+      },
+    },
+    open_questions: {
+      type: "array",
+      items: { type: "string" },
+      description: "Any uncertainties or ambiguities the user could address",
+    },
+  },
+  required: ["summary", "stages", "open_questions"],
+  additionalProperties: false,
+} as const;
 
 // ── Agent factory ───────────────────────────────────────────────────────────
 
-export function createPlanner(queue: MessageQueue, sink: StageSink) {
+export function createPlanner() {
   return createAgent({
     systemPrompt: SYSTEM_PROMPT,
     tools: ["Read", "Glob", "Grep"],
-    mcpTools: [planStageTool(queue, sink)],
-    options: { model: "claude-opus-4-6" },
+    options: {
+      model: "claude-opus-4-6",
+      outputFormat: {
+        type: "json_schema" as const,
+        schema: OUTPUT_SCHEMA,
+      },
+    },
   });
 }
 

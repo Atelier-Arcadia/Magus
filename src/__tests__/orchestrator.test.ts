@@ -4,11 +4,17 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 // ── Shared mock state ──────────────────────────────────────────────────────
 
 /**
- * The sink returned by createStageSink(). We mutate its .stages array in
- * tests to control whether the orchestrator takes the early-return path or
- * the full execution path.
+ * Structured output produced by the mock planner for the current invocation.
+ * Reset to null at the start of each mock planner call so that the second
+ * invocation in an implicit-approval loop sees no stages.
  */
-const mockSink = { stages: [] as any[] };
+let plannerStructuredOutput: any = null;
+
+/**
+ * Per-invocation session IDs for the auto-yielded result event.
+ * Index 0 → first planner call, index 1 → second call, etc.
+ */
+let plannerResultSessionIds: (string | undefined)[] = [];
 
 /** Events the mock planner will yield when iterated. */
 let plannerEventQueue: any[] = [];
@@ -40,10 +46,6 @@ let savePlanCalls: any[] = [];
 
 // ── Module mocks ───────────────────────────────────────────────────────────
 
-mock.module("../tools/plan-stage", () => ({
-  createStageSink: () => mockSink,
-}));
-
 mock.module("../message-queue", () => ({
   createMessageQueue: () => ({}),
 }));
@@ -52,11 +54,25 @@ mock.module("../agents/planner", () => ({
   createPlanner: () =>
     async function* (_ctx: any) {
       const idx = plannerCallCount++;
+      // Reset structured output at the start of each invocation so that a
+      // second planning round (implicit-approval loop) sees no stages by default.
+      plannerStructuredOutput = null;
       const sideEffect = plannerSideEffects[idx] ?? null;
       sideEffect?.();
       for (const event of plannerEventQueue) {
         yield event;
       }
+      // Always emit a result event so the orchestrator can capture session_id
+      // and structured_output for this invocation.
+      yield {
+        kind: "result",
+        text: "",
+        duration_ms: 100,
+        cost_usd: 0,
+        num_turns: 1,
+        session_id: plannerResultSessionIds[idx],
+        structured_output: plannerStructuredOutput,
+      };
     },
 }));
 
@@ -129,11 +145,20 @@ async function collectEvents(gen: AsyncGenerator<any>): Promise<any[]> {
   return events;
 }
 
+/** Push a stage into plannerStructuredOutput so planning succeeds. */
+function addStage(id: string, deps: string[] = []) {
+  if (!plannerStructuredOutput) {
+    plannerStructuredOutput = { summary: "test", stages: [], open_questions: [] };
+  }
+  plannerStructuredOutput.stages.push({ id, plan: `plan for ${id}`, dependencies: deps });
+}
+
 // ── Tests ──────────────────────────────────────────────────────────────────
 
-describe("createOrchestrator – SessionEvent", () => {
+describe("createOrchestrator \u2013 SessionEvent", () => {
   beforeEach(() => {
-    mockSink.stages = [];
+    plannerStructuredOutput = null;
+    plannerResultSessionIds = [];
     plannerEventQueue = [];
     plannerSideEffects = [];
     plannerCallCount = 0;
@@ -169,20 +194,12 @@ describe("createOrchestrator – SessionEvent", () => {
     });
   });
 
-  // ── Final session event – early return (no stages) ───────────────────────
+  // ── Final session event \u2013 early return (no stages) ───────────────────────
 
   describe("final session event on early return (no stages produced)", () => {
     test("emits session event before early return when planner captured a session_id", async () => {
-      plannerEventQueue = [
-        {
-          kind: "result",
-          text: "",
-          duration_ms: 100,
-          cost_usd: 0,
-          num_turns: 1,
-          session_id: "planner-session-early",
-        },
-      ];
+      // Deliver session_id via the auto-result event; no structured_output \u2192 early return.
+      plannerResultSessionIds[0] = "planner-session-early";
 
       const events = await collectEvents(
         createOrchestrator().run({ prompt: "test prompt" }),
@@ -195,7 +212,7 @@ describe("createOrchestrator – SessionEvent", () => {
     });
 
     test("does not emit a session event on early return when planner produced no session_id", async () => {
-      // plannerEventQueue stays empty → no result/error event → no session_id captured
+      // plannerResultSessionIds stays empty \u2192 session_id undefined \u2192 no session event
       const events = await collectEvents(
         createOrchestrator().run({ prompt: "test prompt" }),
       );
@@ -205,31 +222,14 @@ describe("createOrchestrator – SessionEvent", () => {
     });
   });
 
-  // ── Final session event – after full execution ───────────────────────────
+  // ── Final session event \u2013 after full execution ───────────────────────────
 
   describe("final session event after execution completes", () => {
     test("emits session event as the last event after execution when planner captured a session_id", async () => {
-      // Push a stage so the orchestrator proceeds to execution
-      plannerSideEffects[0] = () => {
-        mockSink.stages.push({
-          id: "some-stage",
-          plan: "do something",
-          dependencies: [],
-          queue: {},
-          systemPrompt: "",
-          tools: [],
-        });
-      };
-      plannerEventQueue = [
-        {
-          kind: "result",
-          text: "",
-          duration_ms: 100,
-          cost_usd: 0,
-          num_turns: 1,
-          session_id: "planner-session-end",
-        },
-      ];
+      // Use sideEffect to add a stage (sets plannerStructuredOutput) and
+      // deliver session_id via the auto-result event.
+      plannerSideEffects[0] = () => addStage("some-stage");
+      plannerResultSessionIds[0] = "planner-session-end";
 
       const events = await collectEvents(
         createOrchestrator().run({ prompt: "test prompt" }),
@@ -242,17 +242,9 @@ describe("createOrchestrator – SessionEvent", () => {
     });
 
     test("does not emit a final session event after execution when planner produced no session_id", async () => {
-      plannerSideEffects[0] = () => {
-        mockSink.stages.push({
-          id: "some-stage",
-          plan: "do something",
-          dependencies: [],
-          queue: {},
-          systemPrompt: "",
-          tools: [],
-        });
-      };
-      // plannerEventQueue stays empty → no session_id captured
+      // Add a stage so execution runs, but provide no session_id.
+      plannerSideEffects[0] = () => addStage("some-stage");
+      // plannerResultSessionIds[0] stays undefined
 
       const events = await collectEvents(
         createOrchestrator().run({ prompt: "test prompt" }),
@@ -267,30 +259,13 @@ describe("createOrchestrator – SessionEvent", () => {
 
   describe("implicit approval when planner produces no new stages after feedback", () => {
     test("proceeds to execution when planner re-runs with feedback but registers no new stages", async () => {
-      // First invocation: planner produces stages
-      plannerSideEffects[0] = () => {
-        mockSink.stages.push({
-          id: "some-stage",
-          plan: "do something",
-          dependencies: [],
-          queue: {},
-          systemPrompt: "",
-          tools: [],
-        });
-      };
-      // Second invocation: planner produces nothing (confirms previous plan)
+      // First invocation: planner produces a stage.
+      plannerSideEffects[0] = () => addStage("some-stage");
+      // Second invocation: sideEffect is null \u2192 plannerStructuredOutput reset to null
+      // inside the mock \u2192 no stages \u2192 implicit approval.
       plannerSideEffects[1] = null;
 
-      plannerEventQueue = [
-        {
-          kind: "result",
-          text: "",
-          duration_ms: 100,
-          cost_usd: 0,
-          num_turns: 1,
-          session_id: "session-feedback",
-        },
-      ];
+      plannerResultSessionIds[0] = "session-feedback";
 
       // First approval: rejected with feedback. Second: never reached (auto-approved).
       approvalResultQueue = [
@@ -309,28 +284,10 @@ describe("createOrchestrator – SessionEvent", () => {
     });
 
     test("emits two planning phases before executing", async () => {
-      plannerSideEffects[0] = () => {
-        mockSink.stages.push({
-          id: "some-stage",
-          plan: "do something",
-          dependencies: [],
-          queue: {},
-          systemPrompt: "",
-          tools: [],
-        });
-      };
+      plannerSideEffects[0] = () => addStage("some-stage");
       plannerSideEffects[1] = null;
 
-      plannerEventQueue = [
-        {
-          kind: "result",
-          text: "",
-          duration_ms: 100,
-          cost_usd: 0,
-          num_turns: 1,
-          session_id: "session-feedback",
-        },
-      ];
+      plannerResultSessionIds[0] = "session-feedback";
 
       approvalResultQueue = [
         { approved: false, feedback: "no changes needed" },
@@ -360,21 +317,10 @@ describe("createOrchestrator – SessionEvent", () => {
 
 // ────────────────────────────────────────────────────────────────────────────
 
-/** Push a stage onto the sink so planning succeeds and execution runs. */
-function addStage(id: string, deps: string[] = []) {
-  mockSink.stages.push({
-    id,
-    plan: `plan for ${id}`,
-    dependencies: deps,
-    queue: {},
-    systemPrompt: "",
-    tools: [],
-  });
-}
-
-describe("createOrchestrator – Scribing phase", () => {
+describe("createOrchestrator \u2013 Scribing phase", () => {
   beforeEach(() => {
-    mockSink.stages = [];
+    plannerStructuredOutput = null;
+    plannerResultSessionIds = [];
     plannerEventQueue = [];
     plannerSideEffects = [];
     plannerCallCount = 0;
@@ -401,16 +347,7 @@ describe("createOrchestrator – Scribing phase", () => {
 
   test("scribing phase appears AFTER phase_end:executing and BEFORE the final session event", async () => {
     plannerSideEffects[0] = () => addStage("stage-a");
-    plannerEventQueue = [
-      {
-        kind: "result",
-        text: "",
-        duration_ms: 10,
-        cost_usd: 0,
-        num_turns: 1,
-        session_id: "session-order-check",
-      },
-    ];
+    plannerResultSessionIds[0] = "session-order-check";
 
     const events = await collectEvents(
       createOrchestrator().run({ prompt: "build something" }),
@@ -434,7 +371,7 @@ describe("createOrchestrator – Scribing phase", () => {
 
   // ── Phase sequence ───────────────────────────────────────────────────────
 
-  test("phase sequence is planning → executing → scribing (single approval)", async () => {
+  test("phase sequence is planning \u2192 executing \u2192 scribing (single approval)", async () => {
     plannerSideEffects[0] = () => addStage("stage-a");
 
     const events = await collectEvents(
@@ -458,8 +395,7 @@ describe("createOrchestrator – Scribing phase", () => {
   // ── Early-return path (no stages) ────────────────────────────────────────
 
   test("scribe is NOT invoked when no stages are produced (early-return path)", async () => {
-    // mockSink.stages stays empty → orchestrator returns early
-
+    // plannerStructuredOutput stays null \u2192 orchestrator returns early
     await collectEvents(
       createOrchestrator().run({ prompt: "build something" }),
     );
@@ -468,7 +404,7 @@ describe("createOrchestrator – Scribing phase", () => {
   });
 
   test("no scribing phase events are emitted on the early-return path", async () => {
-    // mockSink.stages stays empty → orchestrator returns before execution/scribing
+    // plannerStructuredOutput stays null \u2192 orchestrator returns before execution/scribing
 
     const events = await collectEvents(
       createOrchestrator().run({ prompt: "build something" }),
@@ -552,7 +488,8 @@ describe("buildScribePrompt", () => {
 
 describe("createOrchestrator \u2013 Plan saving", () => {
   beforeEach(() => {
-    mockSink.stages = [];
+    plannerStructuredOutput = null;
+    plannerResultSessionIds = [];
     plannerEventQueue = [];
     plannerSideEffects = [];
     plannerCallCount = 0;
@@ -594,7 +531,7 @@ describe("createOrchestrator \u2013 Plan saving", () => {
   });
 
   test("does not call savePlan when no stages are produced (early return)", async () => {
-    // mockSink.stages stays empty \u2192 orchestrator returns before saving
+    // plannerStructuredOutput stays null \u2192 orchestrator returns before saving
     await collectEvents(
       createOrchestrator().run({ prompt: "my test prompt" }),
     );

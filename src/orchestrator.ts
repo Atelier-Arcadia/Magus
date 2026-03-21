@@ -1,15 +1,15 @@
 import type { AgentEvent } from "./agent";
-import { createPlanner } from "./agents/planner";
-import { createExecutionPlan, type ExecutionPlan, type Stage } from "./execution-plan";
+import { createPlanner, type PlannerOutput } from "./agents/planner";
+import { createExecutionPlan, type ExecutionPlan, type Stage, type StageDefinition } from "./execution-plan";
 import { executePlan, type ExecutorEvent } from "./executor";
 import { createMessageQueue } from "./message-queue";
 import { createApprovalRequest, type ApprovalResult } from "./prompt-for-approval";
 import { renderExecutionPlan } from "./render-plan";
 import { savePlan } from "./save-plan";
 import { createScribeRunner } from "./scribe-runner";
-import { createStageSink } from "./tools/plan-stage";
 
-// ── Orchestrator events ────────────────────────────────────────────────────────────────────────
+// ── Orchestrator events ──────────────────────────────────────────────────────────────────────────────────────────
+
 
 export type OrchestratorPhase = "planning" | "executing" | "scribing" | "done";
 
@@ -125,10 +125,9 @@ export type OrchestratorDeps = {
 
 export function createOrchestrator(deps: OrchestratorDeps = {}): Orchestrator {
   const doSavePlan = deps.savePlan ?? savePlan;
-  const queue = createMessageQueue();
-  const sink = createStageSink();
-  const planner = createPlanner(queue, sink);
+  const planner = createPlanner();
   const scribe = createScribeRunner();
+
 
   let plannerSessionId: string | undefined;
 
@@ -145,10 +144,11 @@ export function createOrchestrator(deps: OrchestratorDeps = {}): Orchestrator {
       // ── Planning loop (repeats until the user approves) ─────────────────────
       let approvedPlan: ExecutionPlan | undefined;
       let previousPlan: ExecutionPlan | undefined;
+      let plannerOutput: PlannerOutput | undefined;
 
       while (!approvedPlan) {
-        // Reset the sink so a re-plan starts fresh.
-        sink.stages.length = 0;
+        // Reset structured output so a re-plan starts fresh.
+        plannerOutput = undefined;
 
         yield { kind: "phase_start", phase: "planning" };
 
@@ -159,6 +159,9 @@ export function createOrchestrator(deps: OrchestratorDeps = {}): Orchestrator {
         })) {
           if (event.kind === "result") {
             plannerSessionId = event.session_id;
+            if (event.structured_output) {
+              plannerOutput = event.structured_output as PlannerOutput;
+            }
           } else if (event.kind === "error" && event.session_id) {
             plannerSessionId = event.session_id;
           }
@@ -169,7 +172,7 @@ export function createOrchestrator(deps: OrchestratorDeps = {}): Orchestrator {
         yield { kind: "phase_end", phase: "planning" };
 
         // ── Build the plan and request approval ───────────────────────────
-        if (sink.stages.length === 0) {
+        if (!plannerOutput || plannerOutput.stages.length === 0) {
           if (previousPlan) {
             // Feedback round where the planner confirmed no changes —
             // treat the previous plan as implicitly approved.
@@ -183,7 +186,13 @@ export function createOrchestrator(deps: OrchestratorDeps = {}): Orchestrator {
           return;
         }
 
-        const plan = createExecutionPlan(sink.stages);
+        const stageDefinitions: StageDefinition[] = plannerOutput.stages.map((s) => ({
+          id: s.id,
+          plan: s.plan,
+          dependencies: s.dependencies,
+          queue: createMessageQueue(),
+        }));
+        const plan = createExecutionPlan(stageDefinitions);
         previousPlan = plan;
         const renderedPlan = renderExecutionPlan(plan);
 
