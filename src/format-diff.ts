@@ -1,5 +1,8 @@
 import hljs from 'highlight.js/lib/common';
-import { RESET, RED, GREEN, BLUE, GREY, YELLOW, CYAN, PURPLE } from './ansi';
+import {
+  RESET, RED, GREEN, BLUE, GREY, YELLOW, CYAN, PURPLE, LIGHT_BLUE, LIGHT_GREY, DIM,
+  RESET_FG, RESET_DIM, BG_DIFF_ADD, BG_DIFF_REMOVE,
+} from './ansi';
 
 // ── Extension → language map ──────────────────────────────────────────────────
 
@@ -20,14 +23,42 @@ const EXT_TO_LANG: Record<string, string> = {
 // ── hljs class → ANSI color map ───────────────────────────────────────────────
 
 const HLJS_CLASS_TO_ANSI: Record<string, string> = {
-  'hljs-keyword':  BLUE,
-  'hljs-string':   GREEN,
-  'hljs-comment':  GREY,
-  'hljs-number':   YELLOW,
-  'hljs-title':    CYAN,
-  'hljs-built_in': CYAN,
-  'hljs-literal':  YELLOW,
-  'hljs-type':     PURPLE,
+  // Core tokens
+  'hljs-keyword':   BLUE,
+  'hljs-string':    GREEN,
+  'hljs-comment':   GREY,
+  'hljs-number':    YELLOW,
+  'hljs-literal':   YELLOW,
+  'hljs-type':      PURPLE,
+
+  // Names & identifiers
+  'hljs-title':     CYAN,
+  'hljs-title function_': CYAN,
+  'hljs-title class_':    YELLOW,
+  'hljs-built_in':  CYAN,
+  'hljs-function':  CYAN,
+  'hljs-symbol':    YELLOW,
+
+  // Properties & variables
+  'hljs-property':          LIGHT_BLUE,
+  'hljs-attr':              LIGHT_BLUE,
+  'hljs-attribute':         LIGHT_BLUE,
+  'hljs-variable':          LIGHT_BLUE,
+  'hljs-template-variable': LIGHT_BLUE,
+  'hljs-params':            LIGHT_GREY,
+
+  // Markup & selectors
+  'hljs-tag':              BLUE,
+  'hljs-name':             BLUE,
+  'hljs-selector-tag':     BLUE,
+  'hljs-selector-class':   GREEN,
+  'hljs-selector-id':      YELLOW,
+  'hljs-selector-pseudo':  PURPLE,
+
+  // Meta & docs
+  'hljs-meta':    GREY,
+  'hljs-doctag':  GREY,
+  'hljs-regexp':  RED,
 };
 
 // ── Pure helpers ──────────────────────────────────────────────────────────────
@@ -45,15 +76,19 @@ export function decodeEntities(html: string): string {
     .replace(/&quot;/g, '"');
 }
 
-function classToAnsi(cls: string, lineColor: string): string {
-  if (lineColor && cls === 'hljs-string') return lineColor;
-  return HLJS_CLASS_TO_ANSI[cls] ?? lineColor;
+function classToAnsi(cls: string): string {
+  const direct = HLJS_CLASS_TO_ANSI[cls];
+  if (direct) return direct;
+  const first = cls.split(' ')[0];
+  if (first) return HLJS_CLASS_TO_ANSI[first] ?? '';
+  return '';
 }
 
-export function htmlToAnsi(html: string, lineColor: string): string {
+export function htmlToAnsi(html: string, baseline: string): string {
+  const restore = RESET_FG ? `${RESET_FG}${baseline}` : baseline;
   const withSpans = html
-    .replace(/<span class="([^"]+)">/g, (_, cls) => classToAnsi(cls, lineColor))
-    .replace(/<\/span>/g, `${RESET}${lineColor}`);
+    .replace(/<span class="([^"]+)">/g, (_, cls) => classToAnsi(cls))
+    .replace(/<\/span>/g, restore);
   return decodeEntities(withSpans);
 }
 
@@ -83,9 +118,9 @@ export function parseHunkHeader(line: string): HunkNumbers | null {
   const m = HUNK_HEADER_RE.exec(line);
   if (!m) return null;
   return {
-    oldLine:  parseInt(m[1], 10),
+    oldLine:  parseInt(m[1]!, 10),
     oldCount: m[2] !== undefined ? parseInt(m[2], 10) : 1,
-    newLine:  parseInt(m[3], 10),
+    newLine:  parseInt(m[3]!, 10),
     newCount: m[4] !== undefined ? parseInt(m[4], 10) : 1,
   };
 }
@@ -96,7 +131,7 @@ const formatLineNum = (n: number | null, width: number): string =>
   n !== null ? String(n).padStart(width) : ' '.repeat(width);
 
 const formatGutter = (old: number | null, newN: number | null, width: number): string =>
-  `${formatLineNum(old, width)} ${formatLineNum(newN, width)}`;
+  `${formatLineNum(old, width)} ${formatLineNum(newN, width)} \u2502`;
 
 // ── Diff state ──────────────────────────────────────────────────────────────────
 
@@ -105,33 +140,76 @@ type DiffState = {
   readonly newLine:  number;
   readonly width:    number;
   readonly language: string | null;
+  readonly termWidth: number;
   readonly output:   readonly string[];
 };
 
+// ── ANSI-aware padding ──────────────────────────────────────────────────────────
+
+const ANSI_RE = /\x1b\[[0-9;]*m/g;
+
+function visibleLength(s: string): number {
+  return s.replace(ANSI_RE, '').length;
+}
+
+function padToWidth(line: string, width: number, bg: string): string {
+  if (!bg) return line;
+  const visible = visibleLength(line);
+  const pad = Math.max(0, width - visible);
+  return pad > 0 ? line + ' '.repeat(pad) : line;
+}
+
 // ── Line renderers ──────────────────────────────────────────────────────────────
 
-const renderCode = (code: string, lineColor: string, language: string | null): string =>
-  htmlToAnsi(syntaxHighlight(code, language), lineColor);
+const renderCode = (code: string, baseline: string, language: string | null): string =>
+  htmlToAnsi(syntaxHighlight(code, language), baseline);
 
 function processAddition(state: DiffState, line: string): DiffState {
   const code    = line.slice(1);
   const gutter  = formatGutter(null, state.newLine, state.width);
-  const rendered = renderCode(code, GREEN, state.language);
+  const bg      = BG_DIFF_ADD;
+
+  let formatted: string;
+  if (bg) {
+    const rendered = renderCode(code, bg, state.language);
+    formatted = padToWidth(
+      `${bg}${DIM}${gutter}${RESET_DIM}${bg} +${rendered}`,
+      state.termWidth, bg,
+    ) + RESET;
+  } else {
+    // Fallback for 16-color: foreground-only
+    const rendered = renderCode(code, GREEN, state.language);
+    formatted = `${GREEN}${gutter} +${rendered}${RESET}`;
+  }
+
   return {
     ...state,
     newLine: state.newLine + 1,
-    output:  [...state.output, `${GREEN}${gutter} +${rendered}${RESET}`],
+    output:  [...state.output, formatted],
   };
 }
 
 function processRemoval(state: DiffState, line: string): DiffState {
   const code    = line.slice(1);
   const gutter  = formatGutter(state.oldLine, null, state.width);
-  const rendered = renderCode(code, RED, state.language);
+  const bg      = BG_DIFF_REMOVE;
+
+  let formatted: string;
+  if (bg) {
+    const rendered = renderCode(code, bg, state.language);
+    formatted = padToWidth(
+      `${bg}${DIM}${gutter}${RESET_DIM}${bg} -${rendered}`,
+      state.termWidth, bg,
+    ) + RESET;
+  } else {
+    const rendered = renderCode(code, RED, state.language);
+    formatted = `${RED}${gutter} -${rendered}${RESET}`;
+  }
+
   return {
     ...state,
     oldLine: state.oldLine + 1,
-    output:  [...state.output, `${RED}${gutter} -${rendered}${RESET}`],
+    output:  [...state.output, formatted],
   };
 }
 
@@ -143,7 +221,7 @@ function processContext(state: DiffState, line: string): DiffState {
     ...state,
     oldLine: state.oldLine + 1,
     newLine: state.newLine + 1,
-    output:  [...state.output, `${gutter}  ${rendered}`],
+    output:  [...state.output, `${DIM}${gutter}${RESET_DIM}  ${rendered}`],
   };
 }
 
@@ -180,11 +258,12 @@ function computeMaxLine(lines: readonly string[]): number {
 // ── Main export ──────────────────────────────────────────────────────────────────
 
 export function formatDiff(diffText: string, filePath: string): string {
-  const language = getLanguage(filePath);
-  const lines    = diffText.split('\n');
-  const width    = String(computeMaxLine(lines)).length;
+  const language  = getLanguage(filePath);
+  const lines     = diffText.split('\n');
+  const width     = String(computeMaxLine(lines)).length;
+  const termWidth = process.stdout.columns ?? 80;
   const initial: DiffState = {
-    oldLine: 1, newLine: 1, width, language, output: [],
+    oldLine: 1, newLine: 1, width, language, termWidth, output: [],
   };
   return lines.reduce(processOneLine, initial).output.join('\n');
 }

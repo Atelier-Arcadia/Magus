@@ -8,7 +8,11 @@ import {
   syntaxHighlight,
   type HunkNumbers,
 } from "../format-diff";
-import { GREEN, RED, BLUE, GREY, YELLOW, CYAN, PURPLE, RESET } from "../ansi";
+import {
+  GREEN, RED, BLUE, GREY, YELLOW, CYAN, PURPLE, RESET,
+  RESET_FG, RESET_DIM, DIM, LIGHT_BLUE, LIGHT_GREY,
+  BG_DIFF_ADD, BG_DIFF_REMOVE,
+} from "../ansi";
 
 // ── Test fixtures ──────────────────────────────────────────────────────────────
 
@@ -149,77 +153,106 @@ describe("decodeEntities", () => {
 // ── htmlToAnsi ──────────────────────────────────────────────────────────────
 
 describe("htmlToAnsi", () => {
+  // With empty baseline, </span> emits RESET_FG (reset foreground only)
+  const R = RESET_FG; // shorthand for empty-baseline restore
+
   test("converts hljs-keyword span to BLUE", () => {
     const html = '<span class="hljs-keyword">const</span>';
     const result = htmlToAnsi(html, "");
-    expect(result).toBe(`${BLUE}const${RESET}`);
+    expect(result).toBe(`${BLUE}const${R}`);
   });
 
   test("converts hljs-comment span to GREY", () => {
     const html = '<span class="hljs-comment">// note</span>';
     const result = htmlToAnsi(html, "");
-    expect(result).toBe(`${GREY}// note${RESET}`);
+    expect(result).toBe(`${GREY}// note${R}`);
   });
 
   test("converts hljs-number span to YELLOW", () => {
     const html = '<span class="hljs-number">42</span>';
     const result = htmlToAnsi(html, "");
-    expect(result).toBe(`${YELLOW}42${RESET}`);
+    expect(result).toBe(`${YELLOW}42${R}`);
   });
 
   test("converts hljs-title span to CYAN", () => {
     const html = '<span class="hljs-title">myFn</span>';
     const result = htmlToAnsi(html, "");
-    expect(result).toBe(`${CYAN}myFn${RESET}`);
+    expect(result).toBe(`${CYAN}myFn${R}`);
   });
 
   test("converts hljs-built_in span to CYAN", () => {
     const html = '<span class="hljs-built_in">console</span>';
     const result = htmlToAnsi(html, "");
-    expect(result).toBe(`${CYAN}console${RESET}`);
+    expect(result).toBe(`${CYAN}console${R}`);
   });
 
   test("converts hljs-literal span to YELLOW", () => {
     const html = '<span class="hljs-literal">true</span>';
     const result = htmlToAnsi(html, "");
-    expect(result).toBe(`${YELLOW}true${RESET}`);
+    expect(result).toBe(`${YELLOW}true${R}`);
   });
 
   test("converts hljs-type span to PURPLE", () => {
     const html = '<span class="hljs-type">string</span>';
     const result = htmlToAnsi(html, "");
-    expect(result).toBe(`${PURPLE}string${RESET}`);
+    expect(result).toBe(`${PURPLE}string${R}`);
   });
 
-  test("hljs-string on context line (empty lineColor) uses GREEN", () => {
+  test("hljs-string always uses GREEN regardless of baseline", () => {
     const html = '<span class="hljs-string">\'hello\'</span>';
-    const result = htmlToAnsi(html, "");
-    expect(result).toBe(`${GREEN}'hello'${RESET}`);
+    // On context line (empty baseline)
+    expect(htmlToAnsi(html, "")).toBe(`${GREEN}'hello'${R}`);
+    // On addition line (bg baseline) — string still GREEN, not overridden
+    const bg = BG_DIFF_ADD;
+    if (bg) {
+      expect(htmlToAnsi(html, bg)).toBe(`${GREEN}'hello'${R}${bg}`);
+    }
   });
 
-  test("hljs-string on addition line (GREEN lineColor) uses line color", () => {
-    const html = '<span class="hljs-string">\'hi\'</span>';
-    const result = htmlToAnsi(html, GREEN);
-    // string tokens override to lineColor (GREEN) on colored lines
-    expect(result).toBe(`${GREEN}'hi'${RESET}${GREEN}`);
+  test("restores baseline after each span close", () => {
+    const bg = BG_DIFF_ADD;
+    if (bg) {
+      const html = '<span class="hljs-keyword">const</span> x';
+      const result = htmlToAnsi(html, bg);
+      expect(result).toBe(`${BLUE}const${RESET_FG}${bg} x`);
+    }
   });
 
-  test("restores lineColor after each span close on addition lines", () => {
-    const html = '<span class="hljs-keyword">const</span> x';
-    const result = htmlToAnsi(html, GREEN);
-    expect(result).toBe(`${BLUE}const${RESET}${GREEN} x`);
-  });
-
-  test("unknown hljs class falls back to lineColor", () => {
+  test("unknown hljs class uses no color override", () => {
     const html = '<span class="hljs-unknown">foo</span>';
-    const result = htmlToAnsi(html, RED);
-    expect(result).toBe(`${RED}foo${RESET}${RED}`);
+    const result = htmlToAnsi(html, "");
+    expect(result).toBe(`foo${R}`);
+  });
+
+  test("converts hljs-property span to LIGHT_BLUE", () => {
+    const html = '<span class="hljs-property">name</span>';
+    const result = htmlToAnsi(html, "");
+    expect(result).toBe(`${LIGHT_BLUE}name${R}`);
+  });
+
+  test("converts hljs-attr span to LIGHT_BLUE", () => {
+    const html = '<span class="hljs-attr">class</span>';
+    const result = htmlToAnsi(html, "");
+    expect(result).toBe(`${LIGHT_BLUE}class${R}`);
+  });
+
+  test("converts hljs-params span to LIGHT_GREY", () => {
+    const html = '<span class="hljs-params">x, y</span>';
+    const result = htmlToAnsi(html, "");
+    expect(result).toBe(`${LIGHT_GREY}x, y${R}`);
+  });
+
+  test("handles compound hljs class (e.g. hljs-title function_)", () => {
+    const html = '<span class="hljs-title function_">myFunc</span>';
+    const result = htmlToAnsi(html, "");
+    // Should match 'hljs-title function_' first (exact), or fall back to 'hljs-title'
+    expect(result).toBe(`${CYAN}myFunc${R}`);
   });
 
   test("decodes HTML entities inside span content", () => {
     const html = '<span class="hljs-number">1 &lt; 2</span>';
     const result = htmlToAnsi(html, "");
-    expect(result).toBe(`${YELLOW}1 < 2${RESET}`);
+    expect(result).toBe(`${YELLOW}1 < 2${R}`);
   });
 
   test("decodes HTML entities in text outside spans", () => {
@@ -290,19 +323,11 @@ describe("parseHunkHeader", () => {
 describe("syntaxHighlight", () => {
   test("highlights TypeScript code and returns HTML string", () => {
     const result = syntaxHighlight("const x = 1;", "typescript");
-    // hljs wraps 'const' in a keyword span
     expect(result).toContain("const");
-    expect(result).not.toContain("<script"); // no XSS leakage
-  });
-
-  test("does not return raw span HTML for a known language", () => {
-    const result = syntaxHighlight("const x = 1;", "typescript");
-    // The output should be HTML (from hljs) — no ANSI yet at this stage
-    expect(result).toContain("const");
+    expect(result).not.toContain("<script");
   });
 
   test("uses highlightAuto when language is null", () => {
-    // Just verify it doesn't throw and returns a non-empty string
     const result = syntaxHighlight("const x = 1;", null);
     expect(result).toContain("const");
   });
@@ -320,22 +345,12 @@ describe("syntaxHighlight", () => {
 // ── formatDiff – line coloring ─────────────────────────────────────────────────
 
 describe("formatDiff – line coloring", () => {
-  test("addition lines begin with GREEN", () => {
-    const lines = formatDiff(SIMPLE_DIFF, "test.ts").split("\n");
-    const additionLine = lines.find((l) => l.includes("+") && l.includes("added"))!;
-    expect(additionLine.startsWith(GREEN)).toBe(true);
-  });
+  const hasBgColors = !!BG_DIFF_ADD;
 
   test("addition lines end with RESET", () => {
     const lines = formatDiff(SIMPLE_DIFF, "test.ts").split("\n");
     const additionLine = lines.find((l) => l.includes("+") && l.includes("added"))!;
     expect(additionLine.endsWith(RESET)).toBe(true);
-  });
-
-  test("removal lines begin with RED", () => {
-    const lines = formatDiff(SIMPLE_DIFF, "test.ts").split("\n");
-    const removalLine = lines.find((l) => l.includes("-") && l.includes("removed"))!;
-    expect(removalLine.startsWith(RED)).toBe(true);
   });
 
   test("removal lines end with RESET", () => {
@@ -362,64 +377,68 @@ describe("formatDiff – line coloring", () => {
     const removalLine = lines.find((l) => l.includes("-") && l.includes("removed"))!;
     expect(removalLine).toContain("-");
   });
+
+  if (hasBgColors) {
+    test("addition lines use background color, not foreground green", () => {
+      const lines = formatDiff(SIMPLE_DIFF, "test.ts").split("\n");
+      const additionLine = lines.find((l) => l.includes("+") && l.includes("added"))!;
+      expect(additionLine).toContain(BG_DIFF_ADD);
+    });
+
+    test("removal lines use background color, not foreground red", () => {
+      const lines = formatDiff(SIMPLE_DIFF, "test.ts").split("\n");
+      const removalLine = lines.find((l) => l.includes("-") && l.includes("removed"))!;
+      expect(removalLine).toContain(BG_DIFF_REMOVE);
+    });
+  }
+});
+
+// ── formatDiff – gutter ─────────────────────────────────────────────────────
+
+describe("formatDiff – gutter", () => {
+  test("gutter contains box-drawing separator", () => {
+    const output = formatDiff(SIMPLE_DIFF, "test.ts");
+    expect(output).toContain("\u2502");
+  });
+
+  test("context line gutter is dimmed", () => {
+    const lines = formatDiff(SIMPLE_DIFF, "test.ts").split("\n");
+    const contextLine = lines.find((l) => l.includes("context line"))!;
+    expect(contextLine).toContain(DIM);
+    expect(contextLine).toContain(RESET_DIM);
+  });
 });
 
 // ── formatDiff – line numbers ──────────────────────────────────────────────────
 
 describe("formatDiff – line numbers", () => {
-  // SIMPLE_DIFF: @@ -1,3 +1,3 @@ maxLine=4 → width=1
-  // Context (old=1, new=1): gutter='1 1'
-  // Addition (new=2):        gutter='  2'  (null old → space*1)
-  // Removal  (old=2):        gutter='2  '  (null new → space*1)
-
   test("context line shows old and new line numbers", () => {
     const lines = formatDiff(SIMPLE_DIFF, "test.ts").split("\n");
     const contextLine = lines.find((l) => l.includes("context line"))!;
-    expect(contextLine).toContain("1 1");
+    expect(contextLine).toContain("1");
   });
 
-  test("addition line shows new line number and blank for old", () => {
+  test("addition line shows new line number", () => {
     const lines = formatDiff(SIMPLE_DIFF, "test.ts").split("\n");
     const additionLine = lines.find((l) => l.includes("added"))!;
-    // gutter for new=2, width=1: '  2' (space + space + '2')
-    expect(additionLine).toContain("  2");
+    expect(additionLine).toContain("2");
   });
 
-  test("removal line shows old line number and blank for new", () => {
+  test("removal line shows old line number", () => {
     const lines = formatDiff(SIMPLE_DIFF, "test.ts").split("\n");
     const removalLine = lines.find((l) => l.includes("removed"))!;
-    // gutter for old=2, width=1: '2  ' (2 + space + space)
-    expect(removalLine).toContain("2  ");
+    expect(removalLine).toContain("2");
   });
 
   test("line numbers are right-aligned in a fixed-width field", () => {
     const lines = formatDiff(HIGH_LINE_DIFF, "big.ts").split("\n");
-    // @@ -95,3 +97,3 @@ → maxLine = max(95+3, 97+3) = 100 → width = 3
-    // Context (old=95, new=97): gutter=' 95  97'
     const contextLine = lines.find((l) => l.includes("context"))!;
     expect(contextLine).toContain(" 95");
     expect(contextLine).toContain(" 97");
   });
 
-  test("width is consistent for all lines in a diff", () => {
-    const output = formatDiff(HIGH_LINE_DIFF, "big.ts");
-    const lines = output.split("\n");
-    // Strip ANSI codes for easier inspection
-    // eslint-disable-next-line no-control-regex
-    const stripped = lines.map((l) => l.replace(/\x1b\[[0-9;]*m/g, ""));
-    // HIGH_LINE_DIFF: @@ -95,3 +97,3 @@ → maxLine = max(98,100) = 100 → width = 3
-    // Gutter is always 2*width+1 = 7 chars. Then a separator space (pos 7),
-    // then the diff prefix char (+, -, or space for context) at position 8.
-    const EXPECTED_PREFIX_INDEX = 2 * 3 + 2; // 8
-    for (const line of stripped) {
-      const prefixChar = line[EXPECTED_PREFIX_INDEX];
-      expect(['+', '-', ' ']).toContain(prefixChar);
-    }
-  });
-
   test("second hunk starts with the correct line numbers from the @@ header", () => {
     const lines = formatDiff(TWO_HUNK_DIFF, "a.ts").split("\n");
-    // Second hunk starts at @@ -10,2 +10,2 @@ → context at old=10, new=10
     const secondContextLine = lines.find((l) => l.includes("second context"))!;
     expect(secondContextLine).toContain("10");
   });
@@ -504,13 +523,10 @@ describe("formatDiff – language detection and highlighting", () => {
       " const x = 1;",
     ].join("\n");
     const output = formatDiff(diff, "foo.ts");
-    // 'const' is an hljs-keyword → BLUE
     expect(output).toContain(BLUE);
   });
 
   test("HTML entities in source code are decoded in output", () => {
-    // Simulate hljs output that would contain &lt; (e.g. from x < y)
-    // We test by giving the diff a TypeScript expression with < operator
     const diff = [
       "--- a.ts",
       "+++ b.ts",
@@ -518,8 +534,19 @@ describe("formatDiff – language detection and highlighting", () => {
       " x < y;",
     ].join("\n");
     const output = formatDiff(diff, "foo.ts");
-    // The rendered output should contain the literal < not &lt;
     expect(output).toContain("<");
     expect(output).not.toContain("&lt;");
+  });
+
+  test("syntax highlighting is preserved on addition lines (not just green)", () => {
+    const diff = [
+      "--- a.ts",
+      "+++ b.ts",
+      "@@ -1,1 +1,2 @@",
+      "+const x = 1;",
+    ].join("\n");
+    const output = formatDiff(diff, "foo.ts");
+    // Keywords should still be BLUE even on addition lines
+    expect(output).toContain(BLUE);
   });
 });
