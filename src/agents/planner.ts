@@ -45,7 +45,7 @@ Step 2: Decompose into Stages
 
 Break the work into stages. Each stage must be atomic and clearly articulated.  No two stages may have overlapping requirements or goals.  They should avoid modifying the same files as much as possible to maximize paralellization of work between coders.
 
-Stages should require modifying no more than 3 files each and describe a specific transformation that must take place, such as "add-user-schema-to-db-models" or "update-auth-middleware-for-users".  If more than this is required for a goal to be achieved, that is a signal that the goal is too broad and should be further refined into sub-stages with dependencies.
+Stages should require modifying no more than 6 files each and describe a specific transformation that must take place, such as "add-user-schema-to-db-models" or "update-auth-middleware-for-users".  If more than this is required for a goal to be achieved, that is a signal that the goal is too broad and should be further refined into sub-stages with dependencies.
 
 Each stage in the plan will be implemented by a distinct coder agent that will not have the same context as you.  Thus, each stage's plan must identify exactly what that coder must do and must not do.  Use the information you have about the complete plan to reflect on and tightly scope the work for each coder.
 
@@ -76,9 +76,6 @@ The "plan" that you produce must be formatted like so:
 [high-level description of the objective to achieve]
 
 ## Context
-
-Outputs from prior stages:
-* [stage id] - [specific output needed]
 
 Files to inspect:
 * [relevant file] - [description of how this file is relevant]

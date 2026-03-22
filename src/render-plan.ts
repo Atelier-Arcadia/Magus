@@ -222,7 +222,82 @@ function drawConnectors(
   }
 }
 
-// ── Layer computation ──────────────────────────────────────────────────────
+// ── Plan detail helpers ───────────────────────────────────────────────────
+
+/**
+ * Extract the high-level summary from a stage plan.
+ * The summary is the text between the `# Stage: ...` header and the first `##` section.
+ */
+export function extractSummary(plan: string): string {
+  const withoutHeader = plan.replace(/^# Stage:.*\n*/, "");
+  const nextSection = withoutHeader.indexOf("\n##");
+  const raw = nextSection === -1 ? withoutHeader : withoutHeader.slice(0, nextSection);
+  return raw.trim();
+}
+
+/**
+ * Extract the "Files to modify" bullet list from a stage plan.
+ * Returns the raw bullet lines, or an empty string if the section is missing.
+ */
+export function extractFilesToModify(plan: string): string {
+  const marker = "Files to modify:";
+  const start = plan.indexOf(marker);
+  if (start === -1) return "";
+
+  const afterMarker = plan.slice(start + marker.length);
+  const lines = afterMarker.split("\n");
+  const bullets: string[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("*") || trimmed.startsWith("-")) {
+      bullets.push(trimmed);
+    } else if (bullets.length > 0) {
+      break;
+    }
+  }
+  return bullets.join("\n");
+}
+
+// ── Plan details ──────────────────────────────────────────────────────────
+
+/**
+ * Render stage plan details as formatted text, in topological order.
+ *
+ * When `verbose` is true the full plan text and dependency info are included.
+ * When `verbose` is false (default) only the summary and files-to-modify are shown.
+ */
+export function renderPlanDetails(plan: ExecutionPlan, verbose: boolean = false): string {
+  if (!plan.stages) return "(no stages)";
+  const stages = Array.from(plan.stages.values());
+  if (stages.length === 0) return "(no stages)";
+
+  const layers = computeLayers(plan.stages);
+
+  if (verbose) {
+    return layers
+      .flat()
+      .map((stage) => {
+        const deps =
+          stage.dependencies.length > 0
+            ? `Dependencies: ${stage.dependencies.join(", ")}\n\n`
+            : "";
+        return `### ${stage.id}\n\n${deps}${stage.plan}`;
+      })
+      .join("\n\n---\n\n");
+  }
+
+  return layers
+    .flat()
+    .map((stage) => {
+      const summary = extractSummary(stage.plan);
+      const files = extractFilesToModify(stage.plan);
+      const filesSection = files ? `\nFiles to modify:\n${files}` : "";
+      return `### ${stage.id}\n${summary}${filesSection}`;
+    })
+    .join("\n\n---\n\n");
+}
+
+// ── Layer computation ──────────────────────────────────────────────────────────
 
 /**
  * Assign each stage to a layer based on longest path from any root.

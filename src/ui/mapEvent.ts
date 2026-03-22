@@ -3,6 +3,7 @@ import type { StageEndEvent, StageAgentEvent } from "../executor";
 import type { AgentEvent } from "../agent";
 import type { HistoryEntry } from "./types";
 import { formatToolCall } from "../format-tool-call";
+import { renderPlanDetails } from "../render-plan";
 
 // ── ID generator ──────────────────────────────────────────────────────────────
 
@@ -66,6 +67,7 @@ function mapStageAgentEvent(event: StageAgentEvent, nextId: () => string): Histo
 export function mapOrchestratorEvent(
   event: OrchestratorEvent,
   nextId: () => string,
+  verbose: boolean = false,
 ): HistoryEntry[] {
   switch (event.kind) {
     case "phase_start":
@@ -75,9 +77,9 @@ export function mapOrchestratorEvent(
     case "agent_event":
       return mapAgentStreamEvent(event, nextId);
     case "plan_approval_request":
-      return [{ kind: "info", id: nextId(), text: event.renderedPlan }];
+      return [{ kind: "info", id: nextId(), text: event.renderedPlan + "\n\n" + renderPlanDetails(event.plan, verbose) }];
     case "stage_start":
-      return [{ kind: "stage_status", id: nextId(), text: `▶ Stage: ${event.stageId}` }];
+      return [{ kind: "stage_status", id: nextId(), text: `\u25b6 Stage: ${event.stageId}` }];
     case "stage_end":
       return mapStageEnd(event, nextId);
     case "stage_agent_event":

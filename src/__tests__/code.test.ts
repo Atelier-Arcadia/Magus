@@ -5,6 +5,7 @@ import {
   parsePromptFlag,
   parseAutoApprove,
   parseHideTools,
+  parseVerbose,
   readPrompt,
 } from "../code-helpers";
 
@@ -148,6 +149,40 @@ describe("parseHideTools", () => {
 
   test("does not match -h (lowercase)", () => {
     expect(parseHideTools(["-h"])).toBe(false);
+  });
+});
+
+// ── parseVerbose ────────────────────────────────────────────────────────────
+
+describe("parseVerbose", () => {
+  test("returns true when --verbose is present", () => {
+    expect(parseVerbose(["--verbose"])).toBe(true);
+  });
+
+  test("returns true when -v is present", () => {
+    expect(parseVerbose(["-v"])).toBe(true);
+  });
+
+  test("returns false when neither flag is present", () => {
+    expect(parseVerbose([])).toBe(false);
+  });
+
+  test("returns true when flag appears alongside other flags", () => {
+    expect(
+      parseVerbose(["--hide-tools", "--verbose", "--output"]),
+    ).toBe(true);
+  });
+
+  test("does not match partial string --verbose-mode", () => {
+    expect(parseVerbose(["--verbose-mode"])).toBe(false);
+  });
+
+  test("does not match -V (uppercase)", () => {
+    expect(parseVerbose(["-V"])).toBe(false);
+  });
+
+  test("returns false when only unrelated flags are present", () => {
+    expect(parseVerbose(["--hide-tools", "--auto-approve"])).toBe(false);
   });
 });
 

@@ -217,19 +217,102 @@ describe("mapOrchestratorEvent – agent_event / error", () => {
 // ── plan_approval_request ────────────────────────────────────────────────────
 
 describe("mapOrchestratorEvent – plan_approval_request", () => {
-  test("returns an 'info' entry with renderedPlan as the text", () => {
+  test("returns an 'info' entry with renderedPlan and plan details", () => {
+    const { createExecutionPlan } = require("../execution-plan");
+    const { createMessageQueue } = require("../message-queue");
+    const plan = createExecutionPlan([
+      { id: "stage-a", plan: "Do the thing", queue: createMessageQueue() },
+    ]);
     const result = mapOrchestratorEvent(
       {
         kind: "plan_approval_request",
-        plan: {} as any,
-        renderedPlan: "# Stage A\nDo the thing",
+        plan,
+        renderedPlan: "DAG diagram here",
         resolve: () => {},
       },
       fixedId("h1"),
     );
-    expect(result).toEqual([{ kind: "info", id: "h1", text: "# Stage A\nDo the thing" }]);
+    expect(result).toHaveLength(1);
+    expect(result[0].kind).toBe("info");
+    expect(result[0]).toHaveProperty("text");
+    const text = (result[0] as any).text;
+    expect(text).toContain("DAG diagram here");
+    expect(text).toContain("### stage-a");
+    expect(text).toContain("Do the thing");
   });
 });
+
+// ── plan_approval_request (verbose) ──────────────────────────────────────────
+
+describe("mapOrchestratorEvent – plan_approval_request (verbose=true)", () => {
+  test("includes full plan body (## sections) when verbose=true", () => {
+    const { createExecutionPlan } = require("../execution-plan");
+    const { createMessageQueue } = require("../message-queue");
+    const plan = createExecutionPlan([
+      {
+        id: "stage-v",
+        plan: "# Stage: V\n\nSummary line.\n\n## Context\n\nFull context details here.",
+        queue: createMessageQueue(),
+      },
+    ]);
+    const result = mapOrchestratorEvent(
+      {
+        kind: "plan_approval_request",
+        plan,
+        renderedPlan: "DAG",
+        resolve: () => {},
+      },
+      fixedId("h1"),
+      true,
+    );
+    expect(result).toHaveLength(1);
+    const text = (result[0] as any).text;
+    expect(text).toContain("## Context");
+    expect(text).toContain("Full context details here.");
+  });
+
+  test("omits ## sections from plan body when verbose=false (explicit)", () => {
+    const { createExecutionPlan } = require("../execution-plan");
+    const { createMessageQueue } = require("../message-queue");
+    const plan = createExecutionPlan([
+      {
+        id: "stage-s",
+        plan: "# Stage: S\n\nSummary only.\n\n## Context\n\nFull context details here.",
+        queue: createMessageQueue(),
+      },
+    ]);
+    const result = mapOrchestratorEvent(
+      {
+        kind: "plan_approval_request",
+        plan,
+        renderedPlan: "DAG",
+        resolve: () => {},
+      },
+      fixedId("h1"),
+      false,
+    );
+    const text = (result[0] as any).text;
+    expect(text).not.toContain("Full context details here.");
+  });
+
+  test("verbose=false explicit produces the same output as the default (no third arg)", () => {
+    const { createExecutionPlan } = require("../execution-plan");
+    const { createMessageQueue } = require("../message-queue");
+    const plan = createExecutionPlan([
+      { id: "stage-d", plan: "Default plan text.", queue: createMessageQueue() },
+    ]);
+    const event = {
+      kind: "plan_approval_request" as const,
+      plan,
+      renderedPlan: "DAG",
+      resolve: () => {},
+    };
+    const defaultResult = mapOrchestratorEvent(event, fixedId("h1"));
+    const explicitResult = mapOrchestratorEvent(event, fixedId("h1"), false);
+    expect((defaultResult[0] as any).text).toBe((explicitResult[0] as any).text);
+  });
+});
+
 
 // ── stage_start ──────────────────────────────────────────────────────────────
 

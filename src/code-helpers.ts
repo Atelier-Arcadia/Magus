@@ -59,6 +59,15 @@ export function parseHideTools(args: string[]): boolean {
 }
 
 /**
+ * Check whether the `-v` / `--verbose` boolean flag is present in a CLI args array.
+ *
+ * @returns `true` if `-v` or `--verbose` appears exactly (no partial matches).
+ */
+export function parseVerbose(args: string[]): boolean {
+  return args.includes("-v") || args.includes("--verbose");
+}
+
+/**
  * Read prompt text from a file path or, when `promptFile` is `undefined`, from stdin.
  * Trims surrounding whitespace from the result.
  *

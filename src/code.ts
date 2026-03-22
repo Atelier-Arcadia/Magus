@@ -1,7 +1,7 @@
 import { createReadStream } from "node:fs";
 import { createOrchestrator } from "./orchestrator";
 import { mapOrchestratorEvent, createIdGenerator } from "./ui/mapEvent";
-import { parseResumeSessionId, parsePromptFlag, parseAutoApprove, parseHideTools, readPrompt } from "./code-helpers";
+import { parseResumeSessionId, parsePromptFlag, parseAutoApprove, parseHideTools, parseVerbose, readPrompt } from "./code-helpers";
 import type { HistoryEntry } from "./ui/types";
 import type { OrchestratorEvent } from "./orchestrator";
 
@@ -38,9 +38,10 @@ async function drainEvents(
   nextId: () => string,
   autoApprove: boolean,
   hideTools: boolean,
+  verbose: boolean,
 ): Promise<void> {
   for await (const event of gen) {
-    const entries = mapOrchestratorEvent(event, nextId);
+    const entries = mapOrchestratorEvent(event, nextId, verbose);
     for (const entry of entries) {
       if (hideTools && (entry.kind === "tool_use" || entry.kind === "tool_error")) {
         continue;
@@ -89,6 +90,7 @@ const resumeSessionId = parseResumeSessionId(args);
 const promptFile = parsePromptFlag(args);
 const autoApprove = parseAutoApprove(args);
 const hideTools = parseHideTools(args);
+const verbose = parseVerbose(args);
 const prompt = await readPrompt(promptFile);
 const orchestrator = createOrchestrator();
 const nextId = createIdGenerator();
@@ -100,6 +102,7 @@ await drainEvents(
   nextId,
   autoApprove,
   hideTools,
+  verbose,
 );
 
 process.exit(0);

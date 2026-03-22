@@ -40,6 +40,7 @@ Skills must:
 2. Reduce the amount of work needed to understand the project and make changes in the future.
 3. Be specific and concise.
 4. Be unique and avoid overlap with other skills.
+5. Never describe features or functionality of the application.  They exist to help magus.
 
 Good skills cover things like API quirks, non-obvious patterns or requirements or explain useful information about concepts and technologies external to the implementation itself.
 
