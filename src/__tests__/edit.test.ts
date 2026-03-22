@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test, spyOn } from "bun:test";
 import { tmpdir } from "os";
 import { join } from "path";
 import { writeFile, readFile } from "fs/promises";
@@ -316,5 +316,81 @@ describe("editFileTool – error cases", () => {
     expect(result.isError).toBe(true);
     const text = (result.content[0] as { text: string }).text;
     expect(text).toContain("could not read file");
+  });
+});
+
+// ── console.log receives formatted diff output ──────────────────────────────
+
+describe("editFileTool – formatted console output", () => {
+  test("console.log is called exactly once per successful edit", async () => {
+    const spy = spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const path = await withTempFile("line1\nline2\nline3\n");
+      await handler()({ file_path: path, range: [2, 2], text: ["replaced"] }, {});
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test("console.log output contains ANSI escape codes (formatDiff was applied)", async () => {
+    const spy = spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const path = await withTempFile("line1\nline2\nline3\n");
+      await handler()({ file_path: path, range: [2, 2], text: ["replaced"] }, {});
+      const arg = spy.mock.calls[0][0] as string;
+      // Raw unified diff never contains ANSI escape codes.
+      // formatDiff always emits them for addition/removal line colors.
+      expect(arg).toContain("\x1b[");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test("console.log output does NOT equal the raw diff string", async () => {
+    const spy = spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const path = await withTempFile("line1\nline2\nline3\n");
+      const result = await handler()(
+        { file_path: path, range: [2, 2], text: ["replaced"] },
+        {},
+      );
+      const consolArg = spy.mock.calls[0][0] as string;
+      // The LLM content still holds the raw diff – extract it
+      const rawDiff = (result.content[0] as { text: string }).text
+        .replace(/\n\nFile now has \d+ lines\.$/, "");
+      expect(consolArg).not.toBe(rawDiff);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test("LLM content still contains the raw unformatted diff (no ANSI codes)", async () => {
+    const spy = spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const path = await withTempFile("line1\nline2\nline3\n");
+      const result = await handler()(
+        { file_path: path, range: [2, 2], text: ["replaced"] },
+        {},
+      );
+      const llmText = (result.content[0] as { text: string }).text;
+      // Raw diff section (before the 'File now has' trailer) must not contain ANSI codes
+      const rawDiffPart = llmText.replace(/\n\nFile now has \d+ lines\.$/, "");
+      expect(rawDiffPart).not.toContain("\x1b[");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test("console.log is NOT called when an error is returned before writing the file", async () => {
+    const spy = spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const path = await withTempFile("a\nb\nc\n");
+      // start < 1 → early error return, file never written, no console.log
+      await handler()({ file_path: path, range: [0, 1], text: [] }, {});
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

@@ -2,6 +2,7 @@ import { tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { readFile, writeFile } from "fs/promises";
 import { createPatch } from "diff";
+import { formatDiff } from "../format-diff";
 import type { MessageQueue } from "../message-queue";
 
 export function editFileTool(queue: MessageQueue) {
@@ -107,7 +108,7 @@ export function editFileTool(queue: MessageQueue) {
       const diff = createPatch(file_path, original, updated, "", "", {
         context: 3,
       });
-      console.log(diff);
+      console.log(formatDiff(diff, file_path));
 
       return {
         content: [{ type: "text" as const, text: `${diff}\n\nFile now has ${lines.length} lines.` }],
