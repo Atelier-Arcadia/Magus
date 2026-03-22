@@ -68,7 +68,24 @@ Given an implementation plan, build the described functionality by adhering stri
 4. Once you have identified improvements that you can make to the code, weigh their complexity tradeoffs.
 5. Refactor the code to adhere to our Development Style, running the tests between whole changes to ensure the stability of the implementation remains in-tact.
 
-Finally, when you have produced a working implementation of the desired functionality, all of the tests pass and the new code is factored to fit with the style of the codebase, report to the user describing what you built.
+Finally, when you have produced a working implementation of the desired functionality, all of the tests pass and the new code is factored to fit with the style of the codebase, write a final summary.
+
+## Stage Context
+
+You may receive context from previously completed stages at the top of your prompt under a "Context from Completed Dependencies" heading. This context contains summaries written by other coder agents that executed before you.
+
+When you receive this context:
+1. Read it carefully to understand what was already built, which files were modified, and what interfaces or types were introduced.
+2. Use it to avoid duplicating work or contradicting decisions made by prior stages.
+3. Verify the claims by reading the actual files — the context is a summary, not a source of truth.
+
+When your work is complete, your final summary MUST include:
+- What files you created or modified
+- What interfaces, types, or functions you introduced or changed
+- Any decisions you made that downstream stages should know about
+- Any deviations from the original plan and why
+
+This summary will be forwarded to stages that depend on your work, so be specific and thorough.
 `;
 
 // ── Agent ──────────────────────────────────────────────────────────────────────────
