@@ -74,6 +74,32 @@ function createChannel<T>(): Channel<T> {
   };
 }
 
+// ── Stage prompt builder ──────────────────────────────────────────────────
+
+/**
+ * Build the prompt for a stage, prepending context from completed
+ * parent stages when the stage has dependencies.
+ */
+export function buildStagePrompt(stage: Stage, plan: ExecutionPlan): string {
+  if (stage.dependencies.length === 0) {
+    return stage.plan;
+  }
+
+  const parentSections = stage.dependencies
+    .map((depId) => plan.stages.get(depId)!)
+    .map((dep) => `### ${dep.id}\n${dep.result}`);
+
+  return [
+    "## Context from Completed Dependencies",
+    "",
+    ...parentSections,
+    "",
+    "---",
+    "",
+    stage.plan,
+  ].join("\n");
+}
+
 // ── Stage runner ──────────────────────────────────────────────────────────
 
 /**
@@ -89,13 +115,19 @@ async function runStage(
   channel.push({ kind: "stage_start", stageId: stage.id });
 
   const agent = createCoder(stage.queue);
+  const prompt = buildStagePrompt(stage, plan);
+  let resultText: string | undefined;
 
   try {
-    for await (const event of agent({ prompt: stage.plan, cwd })) {
+    for await (const event of agent({ prompt, cwd })) {
       channel.push({ kind: "stage_agent_event", stageId: stage.id, event });
+      if (event.kind === "result") {
+        resultText = event.text;
+      }
     }
 
-    plan.markCompleted(stage.id);
+    const result = resultText ?? `Stage "${stage.id}" completed without a summary.`;
+    plan.markCompleted(stage.id, result);
     channel.push({
       kind: "stage_end",
       stageId: stage.id,

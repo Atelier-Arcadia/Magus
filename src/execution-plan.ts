@@ -22,6 +22,9 @@ export type Stage = {
 
   /** Current execution status. */
   status: StageStatus;
+
+  /** Final summary text produced by the coder agent. */
+  result: string;
 };
 
 // ── ExecutionPlan ───────────────────────────────────────────────────────────
@@ -39,8 +42,8 @@ export type ExecutionPlan = {
   /** Mark a stage as running. */
   markRunning(stageId: string): void;
 
-  /** Mark a stage as completed. */
-  markCompleted(stageId: string): void;
+  /** Mark a stage as completed with its result summary. */
+  markCompleted(stageId: string, result: string): void;
 
   /** Mark a stage as failed. */
   markFailed(stageId: string): void;
@@ -82,6 +85,7 @@ export function createExecutionPlan(
       queue: def.queue,
       dependencies: def.dependencies ?? [],
       status: "pending",
+      result: "",
     });
   }
 
@@ -122,10 +126,11 @@ export function createExecutionPlan(
       stage.status = "running";
     },
 
-    markCompleted(stageId: string) {
+    markCompleted(stageId: string, result: string) {
       const stage = getStage(stages, stageId);
       assertStatus(stage, "running");
       stage.status = "completed";
+      stage.result = result;
     },
 
     markFailed(stageId: string) {

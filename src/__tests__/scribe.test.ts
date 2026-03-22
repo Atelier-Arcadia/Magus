@@ -24,7 +24,7 @@ describe("createScribe", () => {
     const queue = { push: mock() } as any;
     createScribe(queue);
     const config = createAgentMock.mock.calls[0][0];
-    expect(config.options).toEqual({ model: "claude-sonnet-4-6" });
+    expect(config.options).toEqual({ model: "claude-opus-4-6" });
   });
 
   test("passes read-only tools array to createAgent", () => {
