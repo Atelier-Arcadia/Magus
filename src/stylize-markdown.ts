@@ -1,16 +1,7 @@
-// ── ANSI escape constants ────────────────────────────────────────────────────
+// ── ANSI escape constants (imported and re-exported from ansi module) ────────
 
-export const RESET      = "\x1b[0m";
-export const BOLD       = "\x1b[1m";
-export const ITALIC     = "\x1b[3m";
-export const DIM        = "\x1b[2m";
-export const RED        = "\x1b[31m";
-export const PURPLE     = "\x1b[35m";
-export const GREEN      = "\x1b[32m";
-export const BLUE       = "\x1b[34m";
-export const LIGHT_GREY = "\x1b[37m";
-export const GREY       = "\x1b[90m";
-export const LIGHT_BLUE = "\x1b[94m";
+import { RESET, BOLD, ITALIC, DIM, RED, PURPLE, GREEN, BLUE, LIGHT_GREY, GREY, LIGHT_BLUE } from './ansi';
+export { RESET, BOLD, ITALIC, DIM, RED, PURPLE, GREEN, BLUE, LIGHT_GREY, GREY, LIGHT_BLUE } from './ansi';
 
 // ── Heading style map ───────────────────────────────────────────────────────────
 

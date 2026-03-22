@@ -3,16 +3,8 @@ import { createOrchestrator } from "./orchestrator";
 import { mapOrchestratorEvent, createIdGenerator } from "./ui/mapEvent";
 import { parseResumeSessionId, parsePromptFlag, parseAutoApprove, parseHideTools, parseVerbose, readPrompt } from "./code-helpers";
 import { formatEntry } from "./format-entry";
+import { RESET, DIM, CYAN, GRAY } from "./ansi";
 import type { OrchestratorEvent } from "./orchestrator";
-
-// ── ANSI helpers (for CLI chrome outside of entry formatting) ───────────────
-
-const RESET = "\x1b[0m";
-const DIM = "\x1b[2m";
-const CYAN = "\x1b[36m";
-const GRAY = "\x1b[90m";
-
-// ── Event consumer ───────────────────────────────────────────────────────────
 
 async function drainEvents(
   gen: AsyncGenerator<OrchestratorEvent>,

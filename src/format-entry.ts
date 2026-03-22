@@ -1,9 +1,6 @@
-import { stylizeMarkdown, RESET, BOLD, DIM, RED } from "./stylize-markdown";
+import { stylizeMarkdown } from "./stylize-markdown";
+import { RESET, BOLD, DIM, RED, YELLOW } from "./ansi";
 import type { HistoryEntry } from "./ui/types";
-
-// ── ANSI constants used only in this module ──────────────────────────────────
-
-const YELLOW = "\x1b[33m";
 
 // ── Entry formatting ─────────────────────────────────────────────────────────
 

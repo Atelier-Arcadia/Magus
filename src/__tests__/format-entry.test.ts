@@ -1,11 +1,11 @@
+process.env.FORCE_COLOR = "1";
+
 import { describe, expect, test } from "bun:test";
 import { formatEntry } from "../format-entry";
-import { stylizeMarkdown, RESET, BOLD, DIM, RED } from "../stylize-markdown";
+import { stylizeMarkdown } from "../stylize-markdown";
+import { RESET, BOLD, DIM, RED, YELLOW } from "../ansi";
 
-// Local ANSI constant mirroring code.ts — only used in user_prompt branch.
-const YELLOW = "\x1b[33m";
-
-// ── user_prompt ─────────────────────────────────────────────────────────────
+// ── user_prompt ───────────────────────────────────────────────────────────────────────────
 
 describe("user_prompt", () => {
   test("wraps text with YELLOW prompt indicator and RESET", () => {

@@ -1,3 +1,4 @@
+process.env.FORCE_COLOR = '1';
 import { describe, expect, test } from "bun:test";
 import {
   stylizeMarkdown,
