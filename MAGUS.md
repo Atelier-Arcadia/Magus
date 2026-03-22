@@ -7,7 +7,7 @@ Magus is an AI-powered software development agent built on Anthropic's Claude Ag
 - **Runtime**: Bun (not Node.js). Use `bun test`, `bun run`, `Bun.file()`, etc.
 - **Language**: TypeScript (strict mode, ESNext).
 - **Testing**: `bun test` (bun:test). TDD is mandatory — red phase first, green phase second.
-- **Dependencies**: `@anthropic-ai/claude-agent-sdk`, `diff`, `yaml`, `zod`.
+- **Dependencies**: `@anthropic-ai/claude-agent-sdk`, `diff`, `zod`.
 
 ## Architecture
 
@@ -44,7 +44,6 @@ src/
   code.ts               — CLI entrypoint (stdin/file prompt, ANSI output)
   code-helpers.ts       — Pure CLI flag parsers (--resume, --prompt, --auto-approve, -H, -v)
   assistant.ts          — Standalone interactive REPL (legacy/experimental)
-  config.ts             — YAML config loader (magus.yml) with env var expansion
   message-queue.ts      — Simple push-only event buffer for tool side-effect tracking
   format-tool-call.ts   — Format tool name + input as a compact string
   prompt-for-approval.ts— Deferred promise bridging orchestrator ↔ UI for plan approval
@@ -200,6 +199,3 @@ The following files are empty or unused and should be removed:
 - `src/tools/plan-stage.ts` (emptied after structured output refactor)
 - `src/tools/delete-file.ts` (empty, never implemented)
 - `src/agents/.planner.ts.swp` (vim swap file)
-
-### 9. `config.ts` — Only Used by `assistant.ts`
-The YAML config system (`magus.yml`, `loadConfig()`) is only consumed by the legacy `assistant.ts` REPL. If assistant.ts is deprecated, config.ts may be dead code. If kept, the config should be integrated into the main pipeline.

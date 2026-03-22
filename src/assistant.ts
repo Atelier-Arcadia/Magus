@@ -4,7 +4,6 @@ import { editFileTool } from "./tools/edit";
 import { createFileTool } from "./tools/create-file";
 import { createMessageQueue } from "./message-queue";
 import * as readline from "readline";
-import { loadConfig } from "./config";
 
 const queue = createMessageQueue();
 
@@ -25,8 +24,6 @@ function prompt(question: string): Promise<string> {
 }
 
 async function main() {
-  const config = loadConfig();
-  console.log("Config loaded:", JSON.stringify(config));
   console.log("Magus Assistant (type 'exit' to quit)\n");
 
   let sessionId: string | undefined;
