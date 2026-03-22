@@ -87,6 +87,8 @@ Current version: [semantic version number]
 * [semantic version] - [changes that took place between this version and the last]
 </format>
 
+Note: New skill start at version 0.0.1.
+
 ## Completion
 
 Once you are finished these three stages, produce a concise report detailing:

@@ -1,36 +1,38 @@
 import { describe, expect, test } from "bun:test";
 import { extractSummary, extractFilesToModify, renderPlanDetails } from "../render-plan";
-import { createExecutionPlan } from "../execution-plan";
+import { createExecutionPlan, type StagePlan } from "../execution-plan";
 import { createMessageQueue } from "../message-queue";
 
 const queue = () => createMessageQueue();
 
+/** Build a minimal StagePlan with only an objective set. */
+function makePlan(objective: string): StagePlan {
+  return { objective, context: [], skills: [], targets: [], inScope: [], outScope: [], acs: [] };
+}
+
 // ── extractSummary ──────────────────────────────────────────────────────────
 
 describe("extractSummary", () => {
-  test("extracts text between stage header and first ## section", () => {
-    const plan = `# Stage: add-widget
-
-Build a widget component for the dashboard.
-
-## Context
-
-Files to modify:
-* src/widget.ts - new file`;
-
-    expect(extractSummary(plan)).toBe(
-      "Build a widget component for the dashboard.",
-    );
+  test("returns the objective field of a StagePlan", () => {
+    const plan = makePlan("Build a widget component for the dashboard.");
+    expect(extractSummary(plan)).toBe("Build a widget component for the dashboard.");
   });
 
-  test("returns full text when there is no ## section", () => {
-    expect(extractSummary("Just do the thing")).toBe("Just do the thing");
+  test("returns the objective when all other fields are empty", () => {
+    const plan = makePlan("Just do the thing");
+    expect(extractSummary(plan)).toBe("Just do the thing");
   });
 
-  test("strips the stage header line", () => {
-    const plan = `# Stage: foo
-
-The summary.`;
+  test("returns only the objective even when other StagePlan fields have values", () => {
+    const plan: StagePlan = {
+      objective: "The summary.",
+      context: ["src/foo.ts"],
+      skills: [".magus/skills/tdd.md"],
+      targets: ["src/bar.ts"],
+      inScope: ["add widget"],
+      outScope: ["change styles"],
+      acs: ["widget renders correctly"],
+    };
     expect(extractSummary(plan)).toBe("The summary.");
   });
 });
@@ -38,29 +40,21 @@ The summary.`;
 // ── extractFilesToModify ────────────────────────────────────────────────────
 
 describe("extractFilesToModify", () => {
-  test("extracts bullet list after 'Files to modify:' marker", () => {
-    const plan = `## Context
-
-Files to modify:
-* src/a.ts - add widget
-* src/b.ts - update types
-
-## Scope`;
-
-    expect(extractFilesToModify(plan)).toBe(
-      "* src/a.ts - add widget\n* src/b.ts - update types",
-    );
+  test("formats targets as dash-prefixed bullet list", () => {
+    const plan: StagePlan = {
+      ...makePlan("some objective"),
+      targets: ["src/a.ts", "src/b.ts"],
+    };
+    expect(extractFilesToModify(plan)).toBe("- src/a.ts\n- src/b.ts");
   });
 
-  test("returns empty string when marker is missing", () => {
-    expect(extractFilesToModify("No files section here")).toBe("");
+  test("returns empty string when targets is empty", () => {
+    expect(extractFilesToModify(makePlan("no files"))).toBe("");
   });
 
-  test("handles dash-style bullets", () => {
-    const plan = `Files to modify:
-- src/x.ts - thing`;
-
-    expect(extractFilesToModify(plan)).toBe("- src/x.ts - thing");
+  test("returns a single dash-prefixed line for a single target", () => {
+    const plan: StagePlan = { ...makePlan("single"), targets: ["src/x.ts"] };
+    expect(extractFilesToModify(plan)).toBe("- src/x.ts");
   });
 });
 
@@ -71,18 +65,15 @@ describe("renderPlanDetails", () => {
     const plan = createExecutionPlan([
       {
         id: "add-widget",
-        plan: `# Stage: add-widget
-
-Build the widget.
-
-## Context
-
-Files to modify:
-* src/widget.ts - new component
-
-## Scope
-
-In scope: widget`,
+        plan: {
+          objective: "Build the widget.",
+          context: [],
+          skills: [],
+          targets: ["src/widget.ts"],
+          inScope: [],
+          outScope: [],
+          acs: [],
+        },
         queue: queue(),
       },
     ]);
@@ -91,12 +82,12 @@ In scope: widget`,
 
     expect(result).toContain("### add-widget");
     expect(result).toContain("Build the widget.");
-    expect(result).toContain("* src/widget.ts - new component");
+    expect(result).toContain("- src/widget.ts");
   });
 
   test("renders without files section when none listed", () => {
     const plan = createExecutionPlan([
-      { id: "simple", plan: "Just a summary", queue: queue() },
+      { id: "simple", plan: makePlan("Just a summary"), queue: queue() },
     ]);
 
     const result = renderPlanDetails(plan);
@@ -108,8 +99,8 @@ In scope: widget`,
 
   test("separates multiple stages with ---", () => {
     const plan = createExecutionPlan([
-      { id: "a", plan: "Do A", queue: queue() },
-      { id: "b", plan: "Do B", queue: queue() },
+      { id: "a", plan: makePlan("Do A"), queue: queue() },
+      { id: "b", plan: makePlan("Do B"), queue: queue() },
     ]);
 
     const result = renderPlanDetails(plan);
@@ -123,14 +114,15 @@ In scope: widget`,
     const plan = createExecutionPlan([
       {
         id: "stage-x",
-        plan: `# Stage: stage-x
-
-The summary text.
-
-## Context
-
-Files to modify:
-* src/x.ts - modify this`,
+        plan: {
+          objective: "The summary text.",
+          context: [],
+          skills: [],
+          targets: ["src/x.ts"],
+          inScope: [],
+          outScope: [],
+          acs: [],
+        },
         queue: queue(),
       },
     ]);
@@ -138,39 +130,38 @@ Files to modify:
     expect(renderPlanDetails(plan, false)).toBe(renderPlanDetails(plan));
   });
 
-  test("verbose=true renders the full plan text instead of a summary", () => {
-    const fullPlan = `# Stage: full-detail
-
-The summary.
-
-## Context
-
-Files to modify:
-* src/z.ts - change it
-
-## Scope
-
-In scope: everything`;
-
+  test("verbose=true renders the full plan content instead of a summary", () => {
     const plan = createExecutionPlan([
-      { id: "full-detail", plan: fullPlan, queue: queue() },
+      {
+        id: "full-detail",
+        plan: {
+          objective: "The summary.",
+          context: [],
+          skills: [],
+          targets: ["src/z.ts"],
+          inScope: ["everything"],
+          outScope: [],
+          acs: [],
+        },
+        queue: queue(),
+      },
     ]);
 
     const result = renderPlanDetails(plan, true);
 
     expect(result).toContain("### full-detail");
-    // Full plan text must be present, not just the extracted summary
-    expect(result).toContain("## Context");
-    expect(result).toContain("## Scope");
-    expect(result).toContain("In scope: everything");
+    // Full structured content must be rendered, not just the extracted summary
+    expect(result).toContain("## Files to modify");
+    expect(result).toContain("## In scope");
+    expect(result).toContain("- everything");
   });
 
   test("verbose=true includes Dependencies line when stage has dependencies", () => {
     const plan = createExecutionPlan([
-      { id: "alpha", plan: "Alpha plan", queue: queue() },
+      { id: "alpha", plan: makePlan("Alpha plan"), queue: queue() },
       {
         id: "beta",
-        plan: "Beta plan",
+        plan: makePlan("Beta plan"),
         queue: queue(),
         dependencies: ["alpha"],
       },
@@ -183,7 +174,7 @@ In scope: everything`;
 
   test("verbose=true omits Dependencies line when stage has no dependencies", () => {
     const plan = createExecutionPlan([
-      { id: "solo", plan: "Solo plan", queue: queue() },
+      { id: "solo", plan: makePlan("Solo plan"), queue: queue() },
     ]);
 
     const result = renderPlanDetails(plan, true);
@@ -193,8 +184,8 @@ In scope: everything`;
 
   test("verbose=true separates stages with ---", () => {
     const plan = createExecutionPlan([
-      { id: "one", plan: "Plan one", queue: queue() },
-      { id: "two", plan: "Plan two", queue: queue() },
+      { id: "one", plan: makePlan("Plan one"), queue: queue() },
+      { id: "two", plan: makePlan("Plan two"), queue: queue() },
     ]);
 
     const result = renderPlanDetails(plan, true);

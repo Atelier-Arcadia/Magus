@@ -72,6 +72,27 @@ describe("createPlanner", () => {
     expect(stageItems.required).toContain("plan");
     expect(stageItems.required).toContain("dependencies");
   });
+
+  test("plan property in stage schema is an object type with all 7 StagePlan fields", () => {
+    createAgentMock.mockClear();
+    createPlanner();
+    const config = createAgentMock.mock.calls[0][0];
+    const stageItems = config.options.outputFormat.schema.properties.stages.items;
+    const planSchema = stageItems.properties.plan;
+    expect(planSchema.type).toBe("object");
+    expect(planSchema.properties).toHaveProperty("objective");
+    expect(planSchema.properties).toHaveProperty("context");
+    expect(planSchema.properties).toHaveProperty("skills");
+    expect(planSchema.properties).toHaveProperty("targets");
+    expect(planSchema.properties).toHaveProperty("inScope");
+    expect(planSchema.properties).toHaveProperty("outScope");
+    expect(planSchema.properties).toHaveProperty("acs");
+    expect(planSchema.required).toContain("objective");
+    expect(planSchema.required).toContain("context");
+    expect(planSchema.required).toContain("skills");
+    expect(planSchema.required).toContain("targets");
+    expect(planSchema.required).toContain("inScope");
+    expect(planSchema.required).toContain("outScope");
+    expect(planSchema.required).toContain("acs");
+  });
 });
-
-

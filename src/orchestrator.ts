@@ -86,7 +86,7 @@ function renderStageSection(stage: Stage): string {
     `**Status:** ${stage.status}`,
     `**Dependencies:** ${deps}`,
     "**Plan:**",
-    stage.plan,
+    stage.plan.objective,
     "",
   ].join("\n");
 }

@@ -216,12 +216,16 @@ describe("mapOrchestratorEvent – agent_event / error", () => {
 
 // ── plan_approval_request ────────────────────────────────────────────────────
 
-describe("mapOrchestratorEvent – plan_approval_request", () => {
+describe("mapOrchestratorEvent \u2013 plan_approval_request", () => {
   test("returns an 'info' entry with renderedPlan and plan details", () => {
     const { createExecutionPlan } = require("../execution-plan");
     const { createMessageQueue } = require("../message-queue");
     const plan = createExecutionPlan([
-      { id: "stage-a", plan: "Do the thing", queue: createMessageQueue() },
+      {
+        id: "stage-a",
+        plan: { objective: "Do the thing", context: [], skills: [], targets: [], inScope: [], outScope: [], acs: [] },
+        queue: createMessageQueue(),
+      },
     ]);
     const result = mapOrchestratorEvent(
       {
@@ -242,16 +246,24 @@ describe("mapOrchestratorEvent – plan_approval_request", () => {
   });
 });
 
-// ── plan_approval_request (verbose) ──────────────────────────────────────────
+// \u2500\u2500 plan_approval_request (verbose) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
-describe("mapOrchestratorEvent – plan_approval_request (verbose=true)", () => {
+describe("mapOrchestratorEvent \u2013 plan_approval_request (verbose=true)", () => {
   test("includes full plan body (## sections) when verbose=true", () => {
     const { createExecutionPlan } = require("../execution-plan");
     const { createMessageQueue } = require("../message-queue");
     const plan = createExecutionPlan([
       {
         id: "stage-v",
-        plan: "# Stage: V\n\nSummary line.\n\n## Context\n\nFull context details here.",
+        plan: {
+          objective: "Summary line.",
+          context: ["src/context-file.ts"],
+          skills: [],
+          targets: [],
+          inScope: ["add feature"],
+          outScope: [],
+          acs: [],
+        },
         queue: createMessageQueue(),
       },
     ]);
@@ -268,16 +280,24 @@ describe("mapOrchestratorEvent – plan_approval_request (verbose=true)", () => 
     expect(result).toHaveLength(1);
     const text = (result[0] as any).text;
     expect(text).toContain("## Context");
-    expect(text).toContain("Full context details here.");
+    expect(text).toContain("src/context-file.ts");
   });
 
-  test("omits ## sections from plan body when verbose=false (explicit)", () => {
+  test("omits structured sections from plan body when verbose=false (explicit)", () => {
     const { createExecutionPlan } = require("../execution-plan");
     const { createMessageQueue } = require("../message-queue");
     const plan = createExecutionPlan([
       {
         id: "stage-s",
-        plan: "# Stage: S\n\nSummary only.\n\n## Context\n\nFull context details here.",
+        plan: {
+          objective: "Summary only.",
+          context: ["src/context-file.ts"],
+          skills: [],
+          targets: [],
+          inScope: ["do something"],
+          outScope: [],
+          acs: [],
+        },
         queue: createMessageQueue(),
       },
     ]);
@@ -292,14 +312,19 @@ describe("mapOrchestratorEvent – plan_approval_request (verbose=true)", () => 
       false,
     );
     const text = (result[0] as any).text;
-    expect(text).not.toContain("Full context details here.");
+    expect(text).not.toContain("## Context");
+    expect(text).not.toContain("## In scope");
   });
 
   test("verbose=false explicit produces the same output as the default (no third arg)", () => {
     const { createExecutionPlan } = require("../execution-plan");
     const { createMessageQueue } = require("../message-queue");
     const plan = createExecutionPlan([
-      { id: "stage-d", plan: "Default plan text.", queue: createMessageQueue() },
+      {
+        id: "stage-d",
+        plan: { objective: "Default plan text.", context: [], skills: [], targets: [], inScope: [], outScope: [], acs: [] },
+        queue: createMessageQueue(),
+      },
     ]);
     const event = {
       kind: "plan_approval_request" as const,
@@ -312,6 +337,7 @@ describe("mapOrchestratorEvent – plan_approval_request (verbose=true)", () => 
     expect((defaultResult[0] as any).text).toBe((explicitResult[0] as any).text);
   });
 });
+
 
 
 // ── stage_start ──────────────────────────────────────────────────────────────

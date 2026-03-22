@@ -1,5 +1,30 @@
 import type { MessageQueue } from "./message-queue";
 
+// ── StagePlan ────────────────────────────────────────────────────────────────
+
+export type StagePlan = {
+  /** High-level description of what this stage achieves. */
+  objective: string;
+
+  /** File paths the coder should read for context. */
+  context: string[];
+
+  /** Skill file paths applicable to this stage. */
+  skills: string[];
+
+  /** File paths the coder should modify. */
+  targets: string[];
+
+  /** Changes that are in-scope for this stage. */
+  inScope: string[];
+
+  /** Things that must not change in this stage. */
+  outScope: string[];
+
+  /** Acceptance criteria checkboxes. */
+  acs: string[];
+};
+
 // ── Stage ───────────────────────────────────────────────────────────────────
 
 export type StageStatus = "pending" | "running" | "completed" | "failed";
@@ -8,8 +33,8 @@ export type Stage = {
   /** Unique identifier for this stage within the plan. */
   id: string;
 
-  /** Human-readable description of the work this stage performs. */
-  plan: string;
+  /** Structured plan describing the work this stage performs. */
+  plan: StagePlan;
 
   /** Message queue for capturing events produced during this stage. */
   queue: MessageQueue;
@@ -56,7 +81,7 @@ export type ExecutionPlan = {
 
 export type StageDefinition = {
   id: string;
-  plan: string;
+  plan: StagePlan;
   queue: MessageQueue;
   dependencies?: string[];
 };

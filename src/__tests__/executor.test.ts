@@ -1,25 +1,30 @@
 import { describe, expect, test } from "bun:test";
 import { buildStagePrompt } from "../executor";
-import { createExecutionPlan } from "../execution-plan";
+import { createExecutionPlan, type StagePlan } from "../execution-plan";
 import { createMessageQueue } from "../message-queue";
 
 const queue = () => createMessageQueue();
 
+/** Build a minimal StagePlan with only an objective set. */
+function makePlan(objective: string): StagePlan {
+  return { objective, context: [], skills: [], targets: [], inScope: [], outScope: [], acs: [] };
+}
+
 describe("buildStagePrompt", () => {
-  test("root stage with no dependencies returns plan unchanged", () => {
+  test("root stage with no dependencies returns formatted stage markdown", () => {
     const plan = createExecutionPlan([
-      { id: "a", plan: "Build the widget", queue: queue() },
+      { id: "a", plan: makePlan("Build the widget"), queue: queue() },
     ]);
 
     const result = buildStagePrompt(plan.stages.get("a")!, plan);
 
-    expect(result).toBe("Build the widget");
+    expect(result).toBe("# Stage: a\n\nBuild the widget");
   });
 
   test("stage with one completed parent includes parent context", () => {
     const plan = createExecutionPlan([
-      { id: "a", plan: "Build the widget", queue: queue() },
-      { id: "b", plan: "Use the widget", queue: queue(), dependencies: ["a"] },
+      { id: "a", plan: makePlan("Build the widget"), queue: queue() },
+      { id: "b", plan: makePlan("Use the widget"), queue: queue(), dependencies: ["a"] },
     ]);
 
     plan.markRunning("a");
@@ -35,11 +40,11 @@ describe("buildStagePrompt", () => {
 
   test("stage with multiple parents includes all parent results", () => {
     const plan = createExecutionPlan([
-      { id: "a", plan: "Build module A", queue: queue() },
-      { id: "b", plan: "Build module B", queue: queue() },
+      { id: "a", plan: makePlan("Build module A"), queue: queue() },
+      { id: "b", plan: makePlan("Build module B"), queue: queue() },
       {
         id: "c",
-        plan: "Integrate A and B",
+        plan: makePlan("Integrate A and B"),
         queue: queue(),
         dependencies: ["a", "b"],
       },
@@ -59,8 +64,8 @@ describe("buildStagePrompt", () => {
 
   test("context section appears before the stage plan separated by ---", () => {
     const plan = createExecutionPlan([
-      { id: "a", plan: "Build it", queue: queue() },
-      { id: "b", plan: "Use it", queue: queue(), dependencies: ["a"] },
+      { id: "a", plan: makePlan("Build it"), queue: queue() },
+      { id: "b", plan: makePlan("Use it"), queue: queue(), dependencies: ["a"] },
     ]);
 
     plan.markRunning("a");
@@ -76,8 +81,8 @@ describe("buildStagePrompt", () => {
 
   test("includes fallback result text when parent has empty result", () => {
     const plan = createExecutionPlan([
-      { id: "a", plan: "Build it", queue: queue() },
-      { id: "b", plan: "Use it", queue: queue(), dependencies: ["a"] },
+      { id: "a", plan: makePlan("Build it"), queue: queue() },
+      { id: "b", plan: makePlan("Use it"), queue: queue(), dependencies: ["a"] },
     ]);
 
     plan.markRunning("a");

@@ -150,7 +150,11 @@ function addStage(id: string, deps: string[] = []) {
   if (!plannerStructuredOutput) {
     plannerStructuredOutput = { summary: "test", stages: [], open_questions: [] };
   }
-  plannerStructuredOutput.stages.push({ id, plan: `plan for ${id}`, dependencies: deps });
+  plannerStructuredOutput.stages.push({
+    id,
+    plan: { objective: `plan for ${id}`, context: [], skills: [], targets: [], inScope: [], outScope: [], acs: [] },
+    dependencies: deps,
+  });
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────────
@@ -443,11 +447,21 @@ describe("buildScribePrompt", () => {
     stages: new Map([
       [
         "stage-a",
-        { id: "stage-a", plan: "Write tests", dependencies: [], status: "completed" },
+        {
+          id: "stage-a",
+          plan: { objective: "Write tests", context: [], skills: [], targets: [], inScope: [], outScope: [], acs: [] },
+          dependencies: [],
+          status: "completed",
+        },
       ],
       [
         "stage-b",
-        { id: "stage-b", plan: "Write impl", dependencies: ["stage-a"], status: "failed" },
+        {
+          id: "stage-b",
+          plan: { objective: "Write impl", context: [], skills: [], targets: [], inScope: [], outScope: [], acs: [] },
+          dependencies: ["stage-a"],
+          status: "failed",
+        },
       ],
     ]),
   } as any;

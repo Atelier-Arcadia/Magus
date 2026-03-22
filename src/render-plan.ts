@@ -1,4 +1,4 @@
-import type { ExecutionPlan, Stage, StageStatus } from "./execution-plan";
+import type { ExecutionPlan, Stage, StageStatus, StagePlan } from "./execution-plan";
 
 // ── Status icons ────────────────────────────────────────────────────────────
 
@@ -225,37 +225,44 @@ function drawConnectors(
 // ── Plan detail helpers ───────────────────────────────────────────────────
 
 /**
- * Extract the high-level summary from a stage plan.
- * The summary is the text between the `# Stage: ...` header and the first `##` section.
+ * Return the high-level summary of a stage plan.
+ * Directly returns the structured `objective` field.
  */
-export function extractSummary(plan: string): string {
-  const withoutHeader = plan.replace(/^# Stage:.*\n*/, "");
-  const nextSection = withoutHeader.indexOf("\n##");
-  const raw = nextSection === -1 ? withoutHeader : withoutHeader.slice(0, nextSection);
-  return raw.trim();
+export function extractSummary(plan: StagePlan): string {
+  return plan.objective;
 }
 
 /**
- * Extract the "Files to modify" bullet list from a stage plan.
- * Returns the raw bullet lines, or an empty string if the section is missing.
+ * Format the target file paths from a stage plan as a bullet list.
+ * Returns a dash-prefixed bullet string per target, or an empty string
+ * when the plan has no targets.
  */
-export function extractFilesToModify(plan: string): string {
-  const marker = "Files to modify:";
-  const start = plan.indexOf(marker);
-  if (start === -1) return "";
+export function extractFilesToModify(plan: StagePlan): string {
+  return plan.targets.map((t) => `- ${t}`).join("\n");
+}
 
-  const afterMarker = plan.slice(start + marker.length);
-  const lines = afterMarker.split("\n");
-  const bullets: string[] = [];
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (trimmed.startsWith("*") || trimmed.startsWith("-")) {
-      bullets.push(trimmed);
-    } else if (bullets.length > 0) {
-      break;
-    }
-  }
-  return bullets.join("\n");
+/**
+ * Format a StagePlan into human-readable markdown sections.
+ * Used by the verbose rendering path of `renderPlanDetails`.
+ */
+function formatStagePlan(plan: StagePlan): string {
+  const sections: string[] = [plan.objective];
+  const bullet = (items: string[]) => items.map((i) => `- ${i}`).join("\n");
+
+  if (plan.context.length > 0)
+    sections.push(`## Context\n\n${bullet(plan.context)}`);
+  if (plan.skills.length > 0)
+    sections.push(`## Skills\n\n${bullet(plan.skills)}`);
+  if (plan.targets.length > 0)
+    sections.push(`## Files to modify\n\n${bullet(plan.targets)}`);
+  if (plan.inScope.length > 0)
+    sections.push(`## In scope\n\n${bullet(plan.inScope)}`);
+  if (plan.outScope.length > 0)
+    sections.push(`## Out of scope\n\n${bullet(plan.outScope)}`);
+  if (plan.acs.length > 0)
+    sections.push(`## Acceptance criteria\n\n${plan.acs.map((a) => `- [ ] ${a}`).join("\n")}`);
+
+  return sections.join("\n\n");
 }
 
 // ── Plan details ──────────────────────────────────────────────────────────
@@ -263,7 +270,7 @@ export function extractFilesToModify(plan: string): string {
 /**
  * Render stage plan details as formatted text, in topological order.
  *
- * When `verbose` is true the full plan text and dependency info are included.
+ * When `verbose` is true the full plan and dependency info are included.
  * When `verbose` is false (default) only the summary and files-to-modify are shown.
  */
 export function renderPlanDetails(plan: ExecutionPlan, verbose: boolean = false): string {
@@ -281,7 +288,7 @@ export function renderPlanDetails(plan: ExecutionPlan, verbose: boolean = false)
           stage.dependencies.length > 0
             ? `Dependencies: ${stage.dependencies.join(", ")}\n\n`
             : "";
-        return `### ${stage.id}\n\n${deps}${stage.plan}`;
+        return `### ${stage.id}\n\n${deps}${formatStagePlan(stage.plan)}`;
       })
       .join("\n\n---\n\n");
   }

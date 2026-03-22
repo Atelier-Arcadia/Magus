@@ -1,12 +1,13 @@
 import { createAgent } from "../agent";
+import type { StagePlan } from "../execution-plan";
 
-// ── Structured output type ──────────────────────────────────────────────────
+// ── Structured output type ───────────────────────────────────────────────────────────
 
 export type PlannerOutput = {
   summary: string;
   stages: {
     id: string;
-    plan: string;
+    plan: StagePlan;
     dependencies: string[];
   }[];
   open_questions: string[];
@@ -65,40 +66,26 @@ Your response will be captured as structured JSON with the following fields:
    - \`summary\` — a brief description of what the plan accomplishes and the overall approach.
    - \`stages\` — an array of stage objects, each with:
      - \`id\` — a short, descriptive kebab-case identifier (e.g. "add-user-model", "update-api-routes").
-     - \`plan\` — a detailed description of the work in the stage. Include file paths, function names, type signatures, and concrete details from your investigation. Explain what other work will be done concurrently by other agents to avoid duplicating work.
+     - \`plan\` — a structured object describing the work in the stage, with these fields:
+       - \`objective\` — a high-level description of what this stage achieves.
+       - \`context\` — an array of file paths the coder should read for context (just the paths, no descriptions).
+       - \`skills\` — an array of skill file paths applicable to this stage (just the paths).
+       - \`targets\` — an array of file paths the coder should modify (just the paths).
+       - \`inScope\` — an array of strings describing changes that are in-scope for this stage.
+       - \`outScope\` — an array of strings describing things that must not change in this stage or are handled by other stages.
+       - \`acs\` — an array of acceptance criteria strings (one per item, without checkbox markers).
      - \`dependencies\` — an array of stage ids that must complete before this stage can start. Use an empty array for root stages.
    - \`open_questions\` — a list of any uncertainties or ambiguities the user could address.
 
-The "plan" that you produce must be formatted like so:
+The \`plan\` object fields map from the familiar markdown format as follows:
 <format>
-# Stage: [stage id]
-
-[high-level description of the objective to achieve]
-
-## Context
-
-Files to inspect:
-* [relevant file] - [description of how this file is relevant]
-
-Skills:
-* [skill file] - [how it helps and when to activate]
-
-Files to modify:
-* [file path] - [one-sentence description of relevance]
-
-## Scope
-
-In scope:
-[Changes that are in-scope for this stage]
-
-Out of scope:
-[Things that must not change in this stage or are being done in other stages]
-
-## Acceptance Criteria
-
-This work is only considered done when:
-* [ ] [criteria 1]
-* [ ] [criteria 2]
+objective  ← the high-level description paragraph at the top of the stage
+context    ← the file paths listed under "Files to inspect" (paths only, no descriptions)
+skills     ← the file paths listed under "Skills" (paths only)
+targets    ← the file paths listed under "Files to modify" (paths only)
+inScope    ← the bullet items listed under "In scope"
+outScope   ← the bullet items listed under "Out of scope"
+acs        ← the acceptance criteria items (text only, without the "* [ ]" prefix)
 </format>
 
 # Rules
@@ -131,9 +118,46 @@ const OUTPUT_SCHEMA = {
             description: "Short kebab-case identifier (e.g. 'add-user-model', 'update-api-routes')",
           },
           plan: {
-            type: "string",
-            description:
-              "Detailed description of the work this stage accomplishes. Include file paths, function names, type signatures, and concrete details. Explain what other work will be done concurrently by other agents to avoid duplicating work.",
+            type: "object",
+            description: "Structured plan describing the work this stage performs.",
+            properties: {
+              objective: {
+                type: "string",
+                description: "High-level description of what this stage achieves.",
+              },
+              context: {
+                type: "array",
+                items: { type: "string" },
+                description: "File paths the coder should read for context (paths only).",
+              },
+              skills: {
+                type: "array",
+                items: { type: "string" },
+                description: "Skill file paths applicable to this stage (paths only).",
+              },
+              targets: {
+                type: "array",
+                items: { type: "string" },
+                description: "File paths the coder should modify (paths only).",
+              },
+              inScope: {
+                type: "array",
+                items: { type: "string" },
+                description: "Changes that are in-scope for this stage.",
+              },
+              outScope: {
+                type: "array",
+                items: { type: "string" },
+                description: "Things that must not change in this stage or are handled by other stages.",
+              },
+              acs: {
+                type: "array",
+                items: { type: "string" },
+                description: "Acceptance criteria items (text only, without checkbox markers).",
+              },
+            },
+            required: ["objective", "context", "skills", "targets", "inScope", "outScope", "acs"],
+            additionalProperties: false,
           },
           dependencies: {
             type: "array",
