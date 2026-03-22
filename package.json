@@ -8,8 +8,7 @@
   "private": true,
   "devDependencies": {
     "@types/bun": "latest",
-    "@types/diff": "^8.0.0",
-    "@types/react": "^19.2.14"
+    "@types/diff": "^8.0.0"
   },
   "peerDependencies": {
     "typescript": "^5"

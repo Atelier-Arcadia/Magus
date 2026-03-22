@@ -5,9 +5,9 @@ Magus is an AI-powered software development agent built on Anthropic's Claude Ag
 ## Runtime
 
 - **Runtime**: Bun (not Node.js). Use `bun test`, `bun run`, `Bun.file()`, etc.
-- **Language**: TypeScript (strict mode, ESNext, `react-jsx`).
+- **Language**: TypeScript (strict mode, ESNext).
 - **Testing**: `bun test` (bun:test). TDD is mandatory — red phase first, green phase second.
-- **Dependencies**: `@anthropic-ai/claude-agent-sdk`, `diff`, `yaml`, `ink` (React TUI), `zod`.
+- **Dependencies**: `@anthropic-ai/claude-agent-sdk`, `diff`, `yaml`, `zod`.
 
 ## Architecture
 
@@ -63,9 +63,6 @@ src/
     plan-stage.ts       — (empty — removed, was replaced by structured output)
 
   ui/
-    App.tsx             — Ink React component: orchestrator integration
-    MessageHistory.tsx  — Ink Static-based streaming message list
-    TextInput.tsx       — Ink text input component
     mapEvent.ts         — Pure mapper: OrchestratorEvent → HistoryEntry[]
     types.ts            — HistoryEntry discriminated union type
 
@@ -154,7 +151,7 @@ See skill: `.magus/skills/magus-stage-plan-data-flow.md`
 6. Update test helpers
 
 ### Testing
-- Tests live in `src/__tests__/` with `.test.ts`/`.test.tsx` extensions
+- Tests live in `src/__tests__/` with `.test.ts` extensions
 - Use `makePlan(objective)` helpers for `StagePlan` fixtures
 - Mock at the module level with `mock.module()`
 - Dependency injection for side effects (e.g., `OrchestratorDeps`)
@@ -206,6 +203,3 @@ The following files are empty or unused and should be removed:
 
 ### 9. `config.ts` — Only Used by `assistant.ts`
 The YAML config system (`magus.yml`, `loadConfig()`) is only consumed by the legacy `assistant.ts` REPL. If assistant.ts is deprecated, config.ts may be dead code. If kept, the config should be integrated into the main pipeline.
-
-### 10. Duplicate Pattern: Message Formatting
-`code.ts` has its own ANSI formatting (`formatEntry`) while `ui/MessageHistory.tsx` has Ink-based rendering (`renderEntry`). These serve different outputs (raw terminal vs Ink) but share the same mapping logic — the kind→style mapping could be unified into a shared style definition.
