@@ -2,34 +2,15 @@ import { createReadStream } from "node:fs";
 import { createOrchestrator } from "./orchestrator";
 import { mapOrchestratorEvent, createIdGenerator } from "./ui/mapEvent";
 import { parseResumeSessionId, parsePromptFlag, parseAutoApprove, parseHideTools, parseVerbose, readPrompt } from "./code-helpers";
-import type { HistoryEntry } from "./ui/types";
+import { formatEntry } from "./format-entry";
 import type { OrchestratorEvent } from "./orchestrator";
 
-// ── ANSI helpers ─────────────────────────────────────────────────────────────
+// ── ANSI helpers (for CLI chrome outside of entry formatting) ───────────────
 
 const RESET = "\x1b[0m";
-const BOLD = "\x1b[1m";
 const DIM = "\x1b[2m";
-const RED = "\x1b[31m";
-const YELLOW = "\x1b[33m";
 const CYAN = "\x1b[36m";
 const GRAY = "\x1b[90m";
-
-// ── Entry formatting ─────────────────────────────────────────────────────────
-
-function formatEntry(entry: HistoryEntry): string {
-  switch (entry.kind) {
-    case "user_prompt":       return `${YELLOW}❯ ${entry.text}${RESET}`;
-    case "assistant_message": return entry.text;
-    case "tool_use":          return `${DIM}${entry.text}${RESET}`;
-    case "tool_error":        return `${RED}${entry.text}${RESET}`;
-    case "stage_status":      return entry.text;
-    case "result":            return `${DIM}${entry.text}${RESET}`;
-    case "error":             return `${RED}${BOLD}${entry.text}${RESET}`;
-    case "info":              return `${DIM}${entry.text}${RESET}`;
-    case "phase":             return `${BOLD}── Phase: ${entry.label} ──${RESET}`;
-  }
-}
 
 // ── Event consumer ───────────────────────────────────────────────────────────
 
