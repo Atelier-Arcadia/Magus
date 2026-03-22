@@ -8,8 +8,7 @@ import { renderExecutionPlan } from "./render-plan";
 import { savePlan } from "./save-plan";
 import { createScribeRunner } from "./scribe-runner";
 
-// ── Orchestrator events ──────────────────────────────────────────────────────────────────────────────────────────
-
+// ── Orchestrator events ──────────────────────────────────────────────────────
 
 export type OrchestratorPhase = "planning" | "executing" | "scribing" | "done";
 
@@ -59,8 +58,7 @@ export type OrchestratorEvent =
   | SessionEvent
   | ExecutorEvent;
 
-
-// ── Orchestrator ────────────────────────────────────────────────────────────────────────────────
+// ── Orchestrator ─────────────────────────────────────────────────────────────
 
 export type OrchestratorContext = {
   prompt: string;
@@ -76,7 +74,7 @@ export type Orchestrator = {
   run(context: OrchestratorContext): AsyncGenerator<OrchestratorEvent>;
 };
 
-// ── Pure helpers ────────────────────────────────────────────────────────────────────────
+// ── Pure helpers ─────────────────────────────────────────────────────────────
 
 function renderStageSection(stage: Stage): string {
   const deps =
@@ -117,7 +115,133 @@ export function buildScribePrompt(
   ].join("\n");
 }
 
-// ── Factory ──────────────────────────────────────────────────────────────────────────────────
+// ── Planning types ───────────────────────────────────────────────────────────
+
+type PlanningResult = { plan: ExecutionPlan; sessionId?: string };
+
+type PlannerIterationResult = { output?: PlannerOutput; sessionId?: string };
+
+type IterationOutcome =
+  | { kind: "approved"; plan: ExecutionPlan; sessionId?: string }
+  | { kind: "feedback"; prompt: string; previousPlan: ExecutionPlan; sessionId?: string }
+  | { kind: "no_stages"; sessionId?: string; previousPlan?: ExecutionPlan };
+
+// ── Planning helpers ─────────────────────────────────────────────────────────
+
+function updateFromPlannerEvent(
+  event: AgentEvent,
+  sessionId: string | undefined,
+  output: PlannerOutput | undefined,
+): [string | undefined, PlannerOutput | undefined] {
+  if (event.kind === "result") {
+    return [event.session_id, (event.structured_output as PlannerOutput | undefined) ?? output];
+  }
+  if (event.kind === "error" && event.session_id) {
+    return [event.session_id, output];
+  }
+  return [sessionId, output];
+}
+
+function buildPlan(stages: PlannerOutput["stages"]): ExecutionPlan {
+  return createExecutionPlan(
+    stages.map((s): StageDefinition => ({
+      id: s.id,
+      plan: s.plan,
+      dependencies: s.dependencies,
+      queue: createMessageQueue(),
+    })),
+  );
+}
+
+async function* runPlannerIteration(
+  planner: ReturnType<typeof createPlanner>,
+  params: { prompt: string; cwd?: string; sessionId?: string },
+): AsyncGenerator<OrchestratorEvent, PlannerIterationResult> {
+  let sessionId = params.sessionId;
+  let output: PlannerOutput | undefined;
+  yield { kind: "phase_start", phase: "planning" };
+  for await (const event of planner(params)) {
+    [sessionId, output] = updateFromPlannerEvent(event, sessionId, output);
+    yield { kind: "agent_event", phase: "planning", event };
+  }
+  yield { kind: "phase_end", phase: "planning" };
+  return { sessionId, output };
+}
+
+async function* requestApproval(
+  plan: ExecutionPlan,
+): AsyncGenerator<OrchestratorEvent, ApprovalResult> {
+  const request = createApprovalRequest();
+  yield { kind: "plan_approval_request", plan, renderedPlan: renderExecutionPlan(plan), resolve: request.resolve };
+  return await request.promise;
+}
+
+async function* resolveNoStages(
+  outcome: Extract<IterationOutcome, { kind: "no_stages" }>,
+): AsyncGenerator<OrchestratorEvent, PlanningResult | undefined> {
+  if (outcome.previousPlan) return { plan: outcome.previousPlan, sessionId: outcome.sessionId };
+  if (outcome.sessionId) yield { kind: "session", sessionId: outcome.sessionId };
+  return undefined;
+}
+
+async function* planningIteration(
+  planner: ReturnType<typeof createPlanner>,
+  params: { prompt: string; cwd?: string; sessionId?: string },
+  previousPlan: ExecutionPlan | undefined,
+): AsyncGenerator<OrchestratorEvent, IterationOutcome> {
+  const { sessionId, output } = yield* runPlannerIteration(planner, params);
+  if (!output || output.stages.length === 0) {
+    return { kind: "no_stages", sessionId, previousPlan };
+  }
+  const plan = buildPlan(output.stages);
+  const approval = yield* requestApproval(plan);
+  if (approval.approved) return { kind: "approved", plan, sessionId };
+  return { kind: "feedback", prompt: approval.feedback, previousPlan: plan, sessionId };
+}
+
+async function* planningLoop(
+  planner: ReturnType<typeof createPlanner>,
+  context: OrchestratorContext,
+): AsyncGenerator<OrchestratorEvent, PlanningResult | undefined> {
+  let prompt = context.prompt;
+  let sessionId = context.sessionId;
+  let previousPlan: ExecutionPlan | undefined;
+  while (true) {
+    const outcome = yield* planningIteration(planner, { prompt, cwd: context.cwd, sessionId }, previousPlan);
+    if (outcome.kind === "approved") return { plan: outcome.plan, sessionId: outcome.sessionId };
+    if (outcome.kind === "no_stages") return yield* resolveNoStages(outcome);
+    ({ prompt, previousPlan, sessionId } = outcome);
+  }
+}
+
+// ── Phase generators ─────────────────────────────────────────────────────────
+
+async function* executionPhase(
+  plan: ExecutionPlan,
+  cwd?: string,
+): AsyncGenerator<OrchestratorEvent> {
+  yield { kind: "phase_start", phase: "executing" };
+  for await (const event of executePlan(plan, cwd)) {
+    yield event;
+  }
+  yield { kind: "phase_end", phase: "executing" };
+}
+
+async function* scribePhase(
+  scribe: ReturnType<typeof createScribeRunner>,
+  userPrompt: string,
+  plan: ExecutionPlan,
+  cwd?: string,
+): AsyncGenerator<OrchestratorEvent> {
+  const scribePrompt = buildScribePrompt(userPrompt, plan, renderExecutionPlan(plan));
+  yield { kind: "phase_start", phase: "scribing" };
+  for await (const event of scribe({ prompt: scribePrompt, cwd })) {
+    yield { kind: "agent_event", phase: "scribing", event };
+  }
+  yield { kind: "phase_end", phase: "scribing" };
+}
+
+// ── Factory ──────────────────────────────────────────────────────────────────
 
 export type OrchestratorDeps = {
   savePlan?: typeof savePlan;
@@ -128,132 +252,24 @@ export function createOrchestrator(deps: OrchestratorDeps = {}): Orchestrator {
   const planner = createPlanner();
   const scribe = createScribeRunner();
 
-
-  let plannerSessionId: string | undefined;
-
   return {
     async *run(context: OrchestratorContext): AsyncGenerator<OrchestratorEvent> {
-      let prompt = context.prompt;
+      if (context.sessionId) yield { kind: "session", sessionId: context.sessionId };
 
-      // ── Resume: seed plannerSessionId and announce it to consumers ──────────
-      if (context.sessionId) {
-        plannerSessionId = context.sessionId;
-        yield { kind: "session", sessionId: context.sessionId };
-      }
+      const result = yield* planningLoop(planner, context);
+      if (!result) return;
 
-      // ── Planning loop (repeats until the user approves) ─────────────────────
-      let approvedPlan: ExecutionPlan | undefined;
-      let previousPlan: ExecutionPlan | undefined;
-      let plannerOutput: PlannerOutput | undefined;
+      const { plan, sessionId } = result;
 
-      while (!approvedPlan) {
-        // Reset structured output so a re-plan starts fresh.
-        plannerOutput = undefined;
-
-        yield { kind: "phase_start", phase: "planning" };
-
-        for await (const event of planner({
-          prompt,
-          cwd: context.cwd,
-          sessionId: plannerSessionId,
-        })) {
-          if (event.kind === "result") {
-            plannerSessionId = event.session_id;
-            if (event.structured_output) {
-              plannerOutput = event.structured_output as PlannerOutput;
-            }
-          } else if (event.kind === "error" && event.session_id) {
-            plannerSessionId = event.session_id;
-          }
-
-          yield { kind: "agent_event", phase: "planning", event };
-        }
-
-        yield { kind: "phase_end", phase: "planning" };
-
-        // ── Build the plan and request approval ───────────────────────────
-        if (!plannerOutput || plannerOutput.stages.length === 0) {
-          if (previousPlan) {
-            // Feedback round where the planner confirmed no changes —
-            // treat the previous plan as implicitly approved.
-            approvedPlan = previousPlan;
-            break;
-          }
-          // First run and the planner didn't register any stages — nothing to do.
-          if (plannerSessionId) {
-            yield { kind: "session", sessionId: plannerSessionId };
-          }
-          return;
-        }
-
-        const stageDefinitions: StageDefinition[] = plannerOutput.stages.map((s) => ({
-          id: s.id,
-          plan: s.plan,
-          dependencies: s.dependencies,
-          queue: createMessageQueue(),
-        }));
-        const plan = createExecutionPlan(stageDefinitions);
-        previousPlan = plan;
-        const renderedPlan = renderExecutionPlan(plan);
-
-        const request = createApprovalRequest();
-
-        yield {
-          kind: "plan_approval_request",
-          plan,
-          renderedPlan,
-          resolve: request.resolve,
-        };
-
-        const result = await request.promise;
-
-        if (result.approved) {
-          approvedPlan = plan;
-        } else {
-          // User wants to refine — loop back with their feedback.
-          prompt = result.feedback;
-        }
-      }
-
-      // ── Save approved plan (non-fatal) ─────────────────────────────────────────
       try {
-        await doSavePlan({
-          renderedPlan: renderExecutionPlan(approvedPlan),
-          prompt: context.prompt,
-          cwd: context.cwd,
-        });
-      } catch {
-        // non-fatal — continue to execution
-      }
+        await doSavePlan({ renderedPlan: renderExecutionPlan(plan), prompt: context.prompt, cwd: context.cwd });
+      } catch {}
 
-      // ── Execution phase ──────────────────────────────────────────────────────────────────────
-      yield { kind: "phase_start", phase: "executing" };
+      yield* executionPhase(plan, context.cwd);
+      yield* scribePhase(scribe, context.prompt, plan, context.cwd);
 
-      for await (const event of executePlan(approvedPlan, context.cwd)) {
-        yield event;
-      }
-
-      yield { kind: "phase_end", phase: "executing" };
-
-      // ── Scribe phase ───────────────────────────────────────────────────────────
-      const scribePrompt = buildScribePrompt(
-        context.prompt,
-        approvedPlan,
-        renderExecutionPlan(approvedPlan),
-      );
-
-      yield { kind: "phase_start", phase: "scribing" };
-
-      for await (const event of scribe({ prompt: scribePrompt, cwd: context.cwd })) {
-        yield { kind: "agent_event", phase: "scribing", event };
-      }
-
-      yield { kind: "phase_end", phase: "scribing" };
-
-      // ── Final session event ────────────────────────────────────────────────────
-      if (plannerSessionId) {
-        yield { kind: "session", sessionId: plannerSessionId };
-      }
+      if (sessionId) yield { kind: "session", sessionId };
     },
   };
 }
+
