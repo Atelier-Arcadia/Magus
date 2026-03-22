@@ -29,13 +29,13 @@ function handler() {
 describe("editFileTool – trailing newline", () => {
   test("preserves trailing newline in files that end with \\n", async () => {
     const path = await withTempFile("line1\nline2\nline3\n");
-    await handler()({ file_path: path, range: [2, 3], text: ["replaced"] }, {});
+    await handler()({ file_path: path, range: [2, 2], text: ["replaced"] }, {});
     expect(await readFile(path, "utf-8")).toBe("line1\nreplaced\nline3\n");
   });
 
   test("does not add trailing newline to files that do not end with \\n", async () => {
     const path = await withTempFile("line1\nline2\nline3");
-    await handler()({ file_path: path, range: [2, 3], text: ["replaced"] }, {});
+    await handler()({ file_path: path, range: [2, 2], text: ["replaced"] }, {});
     expect(await readFile(path, "utf-8")).toBe("line1\nreplaced\nline3");
   });
 });
@@ -60,11 +60,11 @@ describe("editFileTool – start-beyond-end error line count", () => {
 // ── End validation ───────────────────────────────────────────────────────────
 
 describe("editFileTool – end validation", () => {
-  test("returns error when end exceeds lines.length + 1", async () => {
-    // 3 visible lines → lines.length + 1 = 4; end = 5 is invalid
+  test("returns error when end exceeds lines.length", async () => {
+    // 3 visible lines → end = 4 is invalid (inclusive, max is 3)
     const path = await withTempFile("line1\nline2\nline3\n");
     const result = await handler()(
-      { file_path: path, range: [1, 5], text: [] },
+      { file_path: path, range: [1, 4], text: [] },
       {},
     );
     expect(result.isError).toBe(true);
@@ -73,11 +73,24 @@ describe("editFileTool – end validation", () => {
     expect(text).toContain("3 lines");
   });
 
-  test("accepts end equal to lines.length + 1 (append boundary)", async () => {
-    // 3 visible lines → lines.length + 1 = 4; end = 4 is the append boundary
+  test("accepts end equal to lines.length (replace last line)", async () => {
+    // 3 visible lines → end = 3 is the last valid line
     const path = await withTempFile("line1\nline2\nline3\n");
     const result = await handler()(
-      { file_path: path, range: [4, 4], text: ["appended"] },
+      { file_path: path, range: [3, 3], text: ["replaced"] },
+      {},
+    );
+    expect(result.isError).toBeUndefined();
+    expect(await readFile(path, "utf-8")).toBe(
+      "line1\nline2\nreplaced\n",
+    );
+  });
+
+  test("accepts append via end = start - 1 at end of file", async () => {
+    // 3 visible lines → [4, 3] means insert before line 4 (append)
+    const path = await withTempFile("line1\nline2\nline3\n");
+    const result = await handler()(
+      { file_path: path, range: [4, 3], text: ["appended"] },
       {},
     );
     expect(result.isError).toBeUndefined();
@@ -94,7 +107,7 @@ describe("editFileTool – success response", () => {
     // Replace line 2 of a 3-line file → still 3 lines after edit
     const path = await withTempFile("line1\nline2\nline3\n");
     const result = await handler()(
-      { file_path: path, range: [2, 3], text: ["replaced"] },
+      { file_path: path, range: [2, 2], text: ["replaced"] },
       {},
     );
     expect(result.isError).toBeUndefined();
@@ -106,7 +119,7 @@ describe("editFileTool – success response", () => {
     // Insert before line 2 of a 3-line file → 4 lines after edit
     const path = await withTempFile("line1\nline2\nline3\n");
     const result = await handler()(
-      { file_path: path, range: [2, 2], text: ["inserted"] },
+      { file_path: path, range: [2, 1], text: ["inserted"] },
       {},
     );
     expect(result.isError).toBeUndefined();
@@ -118,7 +131,7 @@ describe("editFileTool – success response", () => {
     // Delete line 2 of a 3-line file → 2 lines after edit
     const path = await withTempFile("line1\nline2\nline3\n");
     const result = await handler()(
-      { file_path: path, range: [2, 3], text: [] },
+      { file_path: path, range: [2, 2], text: [] },
       {},
     );
     expect(result.isError).toBeUndefined();
@@ -134,10 +147,10 @@ describe("editFileTool – success response", () => {
 
 describe("editFileTool – line counting correctness", () => {
   test("replacing all lines of a trailing-\\n file uses the correct line count", async () => {
-    // 3 visible lines; the append boundary is lineCount+1 = 4
+    // 3 visible lines; inclusive range [1, 3] replaces all
     const path = await withTempFile("line1\nline2\nline3\n");
     const result = await handler()(
-      { file_path: path, range: [1, 4], text: ["only"] },
+      { file_path: path, range: [1, 3], text: ["only"] },
       {},
     );
     expect(result.isError).toBeUndefined();
@@ -148,7 +161,7 @@ describe("editFileTool – line counting correctness", () => {
     // 3 visible lines, no trailing newline
     const path = await withTempFile("line1\nline2\nline3");
     const result = await handler()(
-      { file_path: path, range: [1, 4], text: ["only"] },
+      { file_path: path, range: [1, 3], text: ["only"] },
       {},
     );
     expect(result.isError).toBeUndefined();
@@ -175,7 +188,7 @@ describe("editFileTool – empty file", () => {
     // CreateFile writes "" – that splits to [""], 1 line, no trailing newline
     const path = await withTempFile("");
     const result = await handler()(
-      { file_path: path, range: [1, 2], text: ["hello"] },
+      { file_path: path, range: [1, 1], text: ["hello"] },
       {},
     );
     expect(result.isError).toBeUndefined();
@@ -183,10 +196,10 @@ describe("editFileTool – empty file", () => {
   });
 
   test("inserting into an empty file prepends before the single empty line", async () => {
-    // Insert at [1,1] → inserts before line 1, keeps the empty line after
+    // Insert at [1, 0] → inserts before line 1, keeps the empty line after
     const path = await withTempFile("");
     const result = await handler()(
-      { file_path: path, range: [1, 1], text: ["hello"] },
+      { file_path: path, range: [1, 0], text: ["hello"] },
       {},
     );
     expect(result.isError).toBeUndefined();
@@ -200,25 +213,25 @@ describe("editFileTool – empty file", () => {
 describe("editFileTool – off-by-one edge cases", () => {
   test("replaces the last line of a file ending with \\n", async () => {
     const path = await withTempFile("a\nb\nc\n");
-    await handler()({ file_path: path, range: [3, 4], text: ["C"] }, {});
+    await handler()({ file_path: path, range: [3, 3], text: ["C"] }, {});
     expect(await readFile(path, "utf-8")).toBe("a\nb\nC\n");
   });
 
   test("replaces ALL lines of a trailing-\\n file in a single operation", async () => {
     const path = await withTempFile("a\nb\nc\n");
-    await handler()({ file_path: path, range: [1, 4], text: ["x", "y"] }, {});
+    await handler()({ file_path: path, range: [1, 3], text: ["x", "y"] }, {});
     expect(await readFile(path, "utf-8")).toBe("x\ny\n");
   });
 
   test("inserts before the very first line", async () => {
     const path = await withTempFile("a\nb\nc\n");
-    await handler()({ file_path: path, range: [1, 1], text: ["first"] }, {});
+    await handler()({ file_path: path, range: [1, 0], text: ["first"] }, {});
     expect(await readFile(path, "utf-8")).toBe("first\na\nb\nc\n");
   });
 
   test("appends after the last line of a file ending with \\n", async () => {
     const path = await withTempFile("a\nb\nc\n");
-    await handler()({ file_path: path, range: [4, 4], text: ["d"] }, {});
+    await handler()({ file_path: path, range: [4, 3], text: ["d"] }, {});
     expect(await readFile(path, "utf-8")).toBe("a\nb\nc\nd\n");
   });
 });
@@ -226,33 +239,33 @@ describe("editFileTool – off-by-one edge cases", () => {
 // ── Basic operations ──────────────────────────────────────────────────────────
 
 describe("editFileTool – basic operations", () => {
-  test("insert: range [start, start] adds lines without removing any", async () => {
+  test("insert: range [start, start-1] adds lines without removing any", async () => {
     const path = await withTempFile("a\nb\nc\n");
-    await handler()({ file_path: path, range: [2, 2], text: ["inserted"] }, {});
+    await handler()({ file_path: path, range: [2, 1], text: ["inserted"] }, {});
     expect(await readFile(path, "utf-8")).toBe("a\ninserted\nb\nc\n");
   });
 
   test("delete: empty text array removes the targeted lines", async () => {
     const path = await withTempFile("a\nb\nc\n");
-    await handler()({ file_path: path, range: [2, 3], text: [] }, {});
+    await handler()({ file_path: path, range: [2, 2], text: [] }, {});
     expect(await readFile(path, "utf-8")).toBe("a\nc\n");
   });
 
   test("replace: substitutes the targeted lines with the new lines", async () => {
     const path = await withTempFile("a\nb\nc\n");
-    await handler()({ file_path: path, range: [2, 3], text: ["B"] }, {});
+    await handler()({ file_path: path, range: [2, 2], text: ["B"] }, {});
     expect(await readFile(path, "utf-8")).toBe("a\nB\nc\n");
   });
 
-  test("append: range [lineCount+1, lineCount+1] adds lines at the end", async () => {
+  test("append: range [lineCount+1, lineCount] adds lines at the end", async () => {
     const path = await withTempFile("a\nb\nc\n");
-    await handler()({ file_path: path, range: [4, 4], text: ["d"] }, {});
+    await handler()({ file_path: path, range: [4, 3], text: ["d"] }, {});
     expect(await readFile(path, "utf-8")).toBe("a\nb\nc\nd\n");
   });
 
   test("replace with multiple lines expands the file", async () => {
     const path = await withTempFile("a\nb\nc\n");
-    await handler()({ file_path: path, range: [2, 3], text: ["B1", "B2", "B3"] }, {});
+    await handler()({ file_path: path, range: [2, 2], text: ["B1", "B2", "B3"] }, {});
     expect(await readFile(path, "utf-8")).toBe("a\nB1\nB2\nB3\nc\n");
   });
 });
@@ -271,10 +284,10 @@ describe("editFileTool – error cases", () => {
     expect(text).toContain("start");
   });
 
-  test("end < start returns an error", async () => {
+  test("end < start - 1 returns an error", async () => {
     const path = await withTempFile("a\nb\n");
     const result = await handler()(
-      { file_path: path, range: [3, 2], text: [] },
+      { file_path: path, range: [3, 1], text: [] },
       {},
     );
     expect(result.isError).toBe(true);

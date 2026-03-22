@@ -9,20 +9,21 @@ export function editFileTool(queue: MessageQueue) {
     "EditFile",
     [
       "Edit a file by replacing a range of lines with new content.",
-      "The range is a [start, end) pair of 1-based line numbers (start inclusive, end exclusive).",
+      "The range is a [start, end] pair of 1-based line numbers (both inclusive).",
+      "To insert without deleting, set end = start - 1 (e.g. [5, 4] inserts before line 5).",
       "",
       "Examples:",
-      "  Insert before line 5:        range: [5, 5], text: ['new line']",
-      "  Delete lines 3-5:            range: [3, 6], text: []",
-      "  Replace lines 10-12:         range: [10, 13], text: ['replaced']",
-      "  Append to end of file:       range: [lineCount + 1, lineCount + 1], text: ['last line']",
+      "  Insert before line 5:        range: [5, 4], text: ['new line']",
+      "  Delete lines 3-5:            range: [3, 5], text: []",
+      "  Replace lines 10-12:         range: [10, 12], text: ['replaced']",
+      "  Append to end of file:       range: [lineCount + 1, lineCount], text: ['last line']",
     ].join("\n"),
     {
       file_path: z.string().describe("Absolute path to the file to edit"),
       range: z
         .tuple([z.number().int(), z.number().int()])
         .describe(
-          "1-based [start, end) line range. start is inclusive, end is exclusive.",
+          "1-based [start, end] line range. Both inclusive. Use end = start - 1 to insert without replacing.",
         ),
       text: z
         .array(z.string())
@@ -39,10 +40,10 @@ export function editFileTool(queue: MessageQueue) {
           isError: true,
         };
       }
-      if (end < start) {
+      if (end < start - 1) {
         return {
           content: [
-            { type: "text" as const, text: "Error: end must be >= start." },
+            { type: "text" as const, text: "Error: end must be >= start - 1." },
           ],
           isError: true,
         };
@@ -79,7 +80,7 @@ export function editFileTool(queue: MessageQueue) {
         };
       }
 
-      if (end > lines.length + 1) {
+      if (end > lines.length) {
         return {
           content: [
             {
@@ -91,9 +92,9 @@ export function editFileTool(queue: MessageQueue) {
         };
       }
 
-      // Convert 1-based [start, end) to 0-based splice args
+      // Convert 1-based [start, end] (inclusive) to 0-based splice args
       const spliceStart = start - 1;
-      const deleteCount = end - start;
+      const deleteCount = Math.max(0, end - start + 1);
 
       lines.splice(spliceStart, deleteCount, ...text);
 
