@@ -1,6 +1,6 @@
 import hljs from 'highlight.js/lib/common';
 import {
-  RESET, RED, GREEN, BLUE, GREY, YELLOW, CYAN, PURPLE, LIGHT_BLUE, LIGHT_GREY, DIM,
+  RESET, BOLD, RED, GREEN, BLUE, GREY, YELLOW, CYAN, PURPLE, LIGHT_BLUE, LIGHT_GREY, DIM,
   RESET_FG, RESET_DIM, BG_DIFF_ADD, BG_DIFF_REMOVE,
 } from './ansi';
 
@@ -265,5 +265,7 @@ export function formatDiff(diffText: string, filePath: string): string {
   const initial: DiffState = {
     oldLine: 1, newLine: 1, width, language, termWidth, output: [],
   };
-  return lines.reduce(processOneLine, initial).output.join('\n');
+  const header    = `${BOLD}${filePath}${RESET}`;
+  const diffLines = lines.reduce(processOneLine, initial).output.join('\n');
+  return `\n${header}\n${diffLines}\n`;
 }

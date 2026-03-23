@@ -9,7 +9,7 @@ import {
   type HunkNumbers,
 } from "../ui/format-diff";
 import {
-  GREEN, RED, BLUE, GREY, YELLOW, CYAN, PURPLE, RESET,
+  GREEN, RED, BLUE, GREY, YELLOW, CYAN, PURPLE, RESET, BOLD,
   RESET_FG, RESET_DIM, DIM, LIGHT_BLUE, LIGHT_GREY,
   BG_DIFF_ADD, BG_DIFF_REMOVE,
 } from "../ui/ansi";
@@ -468,9 +468,11 @@ describe("formatDiff – header skipping", () => {
     expect(output).not.toContain("@@ -1,3");
   });
 
-  test("output contains exactly three lines for a one-hunk three-line diff", () => {
+  test("output contains 6 split-elements for a one-hunk three-line diff (header + wrapper newlines)", () => {
     const output = formatDiff(SIMPLE_DIFF, "test.ts");
-    expect(output.split("\n")).toHaveLength(3);
+    // Structure: \n{header}\n{line1}\n{line2}\n{line3}\n
+    // Split by \n: ["", header, line1, line2, line3, ""] → 6 elements
+    expect(output.split("\n")).toHaveLength(6);
   });
 
   test("Index: and === separator lines are silently skipped", () => {
@@ -484,7 +486,36 @@ describe("formatDiff – header skipping", () => {
       "+new",
     ].join("\n");
     const lines = formatDiff(diffWithIndex, "test.ts").split("\n");
-    expect(lines).toHaveLength(2);
+    // Structure: \n{header}\n{line1}\n{line2}\n → ["", header, line1, line2, ""] → 5 elements
+    expect(lines).toHaveLength(5);
+  });
+});
+// ── formatDiff – header and wrapper ───────────────────────────────────────────
+
+describe("formatDiff – header and wrapper", () => {
+  test("output starts with a leading newline for visual separation", () => {
+    const output = formatDiff(SIMPLE_DIFF, "test.ts");
+    expect(output.startsWith("\n")).toBe(true);
+  });
+
+  test("second split-element contains the file path", () => {
+    const lines = formatDiff(SIMPLE_DIFF, "test.ts").split("\n");
+    expect(lines[1]).toContain("test.ts");
+  });
+
+  test("header line is styled with BOLD", () => {
+    const lines = formatDiff(SIMPLE_DIFF, "test.ts").split("\n");
+    expect(lines[1]).toContain(BOLD);
+  });
+
+  test("output ends with a trailing newline for visual separation", () => {
+    const output = formatDiff(SIMPLE_DIFF, "test.ts");
+    expect(output.endsWith("\n")).toBe(true);
+  });
+
+  test("header displays the full file path as provided", () => {
+    const lines = formatDiff(SIMPLE_DIFF, "src/some/deep/path.ts").split("\n");
+    expect(lines[1]).toContain("src/some/deep/path.ts");
   });
 });
 
