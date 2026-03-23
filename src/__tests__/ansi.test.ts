@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { detectColor, buildCodes } from "../ansi";
-import * as ansi from "../ansi";
+import { detectColor, buildCodes } from "../ui/ansi";
+import * as ansi from "../ui/ansi";
 
 // ── Constant name registry ───────────────────────────────────────────────────
 

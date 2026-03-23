@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { extractSummary, extractFilesToModify, renderPlanDetails } from "../render-plan";
-import { createExecutionPlan, type StagePlan } from "../execution-plan";
-import { createMessageQueue } from "../message-queue";
+import { extractSummary, extractFilesToModify, renderPlanDetails } from "../engine/render-plan";
+import { createExecutionPlan, type StagePlan } from "../engine/execution-plan";
+import { createMessageQueue } from "../engine/message-queue";
 
 const queue = () => createMessageQueue();
 

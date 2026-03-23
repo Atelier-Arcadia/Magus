@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mapSdkMessage } from "../agent";
+import { mapSdkMessage } from "../agents/common";
 import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { createExecutionPlan } from "../execution-plan";
-import { createMessageQueue } from "../message-queue";
+import { createExecutionPlan } from "../engine/execution-plan";
+import { createMessageQueue } from "../engine/message-queue";
 
 const queue = () => createMessageQueue();
 

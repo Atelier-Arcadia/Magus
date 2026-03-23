@@ -1,9 +1,9 @@
-import type { OrchestratorEvent, AgentStreamEvent } from "../orchestrator";
-import type { StageEndEvent, StageAgentEvent } from "../executor";
-import type { AgentEvent } from "../agent";
+import type { OrchestratorEvent, AgentStreamEvent } from "../engine/orchestrator";
+import type { StageEndEvent, StageAgentEvent } from "../engine/executor";
+import type { AgentEvent } from "../agents/common";
 import type { HistoryEntry } from "./types";
-import { formatToolCall } from "../format-tool-call";
-import { renderPlanDetails } from "../render-plan";
+import { formatToolCall } from "./format-tool-call";
+import { renderPlanDetails } from "../engine/render-plan";
 
 // ── ID generator ──────────────────────────────────────────────────────────────
 

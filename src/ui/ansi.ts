@@ -1,4 +1,4 @@
-// ── Color level detection ────────────────────────────────────────────────────
+// ── Color level detection ──────────────────────────────────────────────────────────────
 
 export type ColorEnv = {
   readonly FORCE_COLOR?: string;
@@ -31,7 +31,7 @@ export function detectColor(env: ColorEnv): boolean {
   return detectColorLevel(env) > 0;
 }
 
-// ── ANSI code builder ───────────────────────────────────────────────────────────
+// ── ANSI code builder ────────────────────────────────────────────────────────────────────────
 
 export function buildCodes(enabled: boolean, level: ColorLevel = enabled ? 3 : 0) {
   const code = (seq: string): string => (enabled ? seq : "");
@@ -50,7 +50,7 @@ export function buildCodes(enabled: boolean, level: ColorLevel = enabled ? 3 : 0
   };
 }
 
-// ── Module-level constants ────────────────────────────────────────────────────────────
+// ── Module-level constants ───────────────────────────────────────────────────────────────────────────
 
 export const colorLevel = detectColorLevel({
   FORCE_COLOR:  process.env.FORCE_COLOR,

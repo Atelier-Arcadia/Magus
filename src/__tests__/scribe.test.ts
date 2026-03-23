@@ -2,7 +2,7 @@ import { describe, expect, test, mock, beforeEach } from "bun:test";
 
 // Mock createAgent to capture the config it receives
 const createAgentMock = mock((config: any) => config);
-mock.module("../agent", () => ({
+mock.module("../agents/common", () => ({
   createAgent: createAgentMock,
 }));
 

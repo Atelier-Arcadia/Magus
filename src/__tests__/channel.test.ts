@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createChannel } from "../channel";
+import { createChannel } from "../engine/channel";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 

@@ -1,4 +1,4 @@
-import { createAgent } from "../agent";
+import { createAgent } from "./common";
 import { editFileTool } from "../tools/edit";
 import { createFileTool } from "../tools/create-file";
 import { packageScriptTool } from "../tools/package-script";

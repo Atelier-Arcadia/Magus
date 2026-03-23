@@ -1,4 +1,4 @@
-import { createAgent } from "../agent";
+import { createAgent } from "./common";
 import { dateTool } from "../tools/date";
 import { editFileTool } from "../tools/edit";
 import { createFileTool } from "../tools/create-file";

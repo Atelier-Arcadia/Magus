@@ -4,7 +4,7 @@ import {
   RESET_FG, RESET_DIM, BG_DIFF_ADD, BG_DIFF_REMOVE,
 } from './ansi';
 
-// ── Extension → language map ──────────────────────────────────────────────────
+// ── Extension → language map ──────────────────────────────────────────────────────────────────
 
 const EXT_TO_LANG: Record<string, string> = {
   ts: 'typescript',  tsx: 'typescript',
@@ -20,7 +20,7 @@ const EXT_TO_LANG: Record<string, string> = {
   kt: 'kotlin',      cs: 'csharp',       lua: 'lua',
 };
 
-// ── hljs class → ANSI color map ───────────────────────────────────────────────
+// ── hljs class → ANSI color map ─────────────────────────────────────────────────────────────────────
 
 const HLJS_CLASS_TO_ANSI: Record<string, string> = {
   // Core tokens
@@ -61,7 +61,7 @@ const HLJS_CLASS_TO_ANSI: Record<string, string> = {
   'hljs-regexp':  RED,
 };
 
-// ── Pure helpers ──────────────────────────────────────────────────────────────
+// ── Pure helpers ──────────────────────────────────────────────────────────────────────────────────
 
 export function getLanguage(filePath: string): string | null {
   const ext = filePath.split('.').pop()?.toLowerCase() ?? '';
@@ -103,7 +103,7 @@ export function syntaxHighlight(code: string, language: string | null): string {
   }
 }
 
-// ── Hunk header parsing ───────────────────────────────────────────────────────────
+// ── Hunk header parsing ────────────────────────────────────────────────────────────────────────────────────
 
 const HUNK_HEADER_RE = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
 
@@ -125,7 +125,7 @@ export function parseHunkHeader(line: string): HunkNumbers | null {
   };
 }
 
-// ── Gutter formatting ──────────────────────────────────────────────────────────────
+// ── Gutter formatting ─────────────────────────────────────────────────────────────────────────────────────────
 
 const formatLineNum = (n: number | null, width: number): string =>
   n !== null ? String(n).padStart(width) : ' '.repeat(width);
@@ -133,7 +133,7 @@ const formatLineNum = (n: number | null, width: number): string =>
 const formatGutter = (old: number | null, newN: number | null, width: number): string =>
   `${formatLineNum(old, width)} ${formatLineNum(newN, width)} \u2502`;
 
-// ── Diff state ──────────────────────────────────────────────────────────────────
+// ── Diff state ───────────────────────────────────────────────────────────────────────────────────────────
 
 type DiffState = {
   readonly oldLine:  number;
@@ -144,7 +144,7 @@ type DiffState = {
   readonly output:   readonly string[];
 };
 
-// ── ANSI-aware padding ──────────────────────────────────────────────────────────
+// ── ANSI-aware padding ────────────────────────────────────────────────────────────────────────────────────────
 
 const ANSI_RE = /\x1b\[[0-9;]*m/g;
 
@@ -159,7 +159,7 @@ function padToWidth(line: string, width: number, bg: string): string {
   return pad > 0 ? line + ' '.repeat(pad) : line;
 }
 
-// ── Line renderers ──────────────────────────────────────────────────────────────
+// ── Line renderers ──────────────────────────────────────────────────────────────────────────────────────────
 
 const renderCode = (code: string, baseline: string, language: string | null): string =>
   htmlToAnsi(syntaxHighlight(code, language), baseline);
@@ -231,7 +231,7 @@ function processHunk(state: DiffState, line: string): DiffState {
   return { ...state, oldLine: hunk.oldLine, newLine: hunk.newLine };
 }
 
-// ── Line classifier ──────────────────────────────────────────────────────────────
+// ── Line classifier ──────────────────────────────────────────────────────────────────────────────────────────
 
 const isFileHeader = (line: string): boolean =>
   line.startsWith('--- ') || line.startsWith('+++ ');
@@ -245,7 +245,7 @@ function processOneLine(state: DiffState, line: string): DiffState {
   return state;
 }
 
-// ── Width computation ────────────────────────────────────────────────────────────
+// ── Width computation ────────────────────────────────────────────────────────────────────────────────────────
 
 function computeMaxLine(lines: readonly string[]): number {
   return lines.reduce((max, line) => {
@@ -255,7 +255,7 @@ function computeMaxLine(lines: readonly string[]): number {
   }, 1);
 }
 
-// ── Main export ──────────────────────────────────────────────────────────────────
+// ── Main export ────────────────────────────────────────────────────────────────────────────────────────────
 
 export function formatDiff(diffText: string, filePath: string): string {
   const language  = getLanguage(filePath);

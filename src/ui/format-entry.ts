@@ -1,6 +1,6 @@
 import { stylizeMarkdown } from "./stylize-markdown";
 import { RESET, BOLD, DIM, RED, YELLOW } from "./ansi";
-import type { HistoryEntry } from "./ui/types";
+import type { HistoryEntry } from "./types";
 
 // ── Entry formatting ─────────────────────────────────────────────────────────
 

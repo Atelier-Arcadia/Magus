@@ -18,4 +18,3 @@ export function createMessageQueue(): MessageQueue {
     events,
   };
 }
-

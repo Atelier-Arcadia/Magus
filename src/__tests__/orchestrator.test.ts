@@ -46,7 +46,7 @@ let savePlanCalls: any[] = [];
 
 // ── Module mocks ───────────────────────────────────────────────────────────
 
-mock.module("../message-queue", () => ({
+mock.module("../engine/message-queue", () => ({
   createMessageQueue: () => ({}),
 }));
 
@@ -76,11 +76,11 @@ mock.module("../agents/planner", () => ({
     },
 }));
 
-mock.module("../render-plan", () => ({
+mock.module("../engine/render-plan", () => ({
   renderExecutionPlan: () => "Rendered Plan",
 }));
 
-mock.module("../execution-plan", () => ({
+mock.module("../engine/execution-plan", () => ({
   createExecutionPlan: (stageDefs: any[]) => {
     const stagesMap = new Map(
       stageDefs.map((s: any) => [s.id, { ...s, status: "pending" }]),
@@ -96,7 +96,7 @@ mock.module("../execution-plan", () => ({
   },
 }));
 
-mock.module("../prompt-for-approval", () => ({
+mock.module("../engine/prompt-for-approval", () => ({
   createApprovalRequest: () => {
     const result = approvalResultQueue.length > 0
       ? approvalResultQueue.shift()
@@ -108,11 +108,11 @@ mock.module("../prompt-for-approval", () => ({
   },
 }));
 
-mock.module("../executor", () => ({
+mock.module("../engine/executor", () => ({
   executePlan: async function* () {},
 }));
 
-mock.module("../scribe-runner", () => ({
+mock.module("../engine/scribe-runner", () => ({
   createScribeRunner: () =>
     async function* (_ctx: any) {
       scribeCallCount++;
@@ -126,7 +126,7 @@ mock.module("../scribe-runner", () => ({
 
 // ── Import under test (after mocks are registered) ────────────────────────
 
-const { createOrchestrator: _createOrchestrator } = await import("../orchestrator");
+const { createOrchestrator: _createOrchestrator } = await import("../engine/orchestrator");
 
 /** Wraps the real factory with the mock savePlan injected. */
 const mockSavePlan = async (opts: any) => {
@@ -440,7 +440,7 @@ describe("createOrchestrator \u2013 Scribing phase", () => {
 
 // ── buildScribePrompt unit tests ──────────────────────────────────────────
 
-const { buildScribePrompt } = await import("../orchestrator");
+const { buildScribePrompt } = await import("../engine/orchestrator");
 
 describe("buildScribePrompt", () => {
   const mockPlan = {

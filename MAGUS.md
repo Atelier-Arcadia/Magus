@@ -11,7 +11,7 @@ Magus is an AI-powered software development agent built on Anthropic's Claude Ag
 
 ## Architecture
 
-Magus follows a three-phase pipeline orchestrated by `src/orchestrator.ts`:
+Magus follows a three-phase pipeline orchestrated by `src/engine/orchestrator.ts`:
 
 ```
 User prompt
@@ -25,7 +25,7 @@ All inter-component communication uses async generators yielding typed event str
 
 ### Key Design Principles
 
-- **Event-driven**: Every component (`agent.ts`, `orchestrator.ts`, `executor.ts`) is an `AsyncGenerator` yielding typed discriminated-union events.
+- **Event-driven**: Every component (`agents/common.ts`, `engine/orchestrator.ts`, `engine/executor.ts`) is an `AsyncGenerator` yielding typed discriminated-union events.
 - **Pure core, effectful shell**: Business logic should be pure functions; side effects (file I/O, LLM calls) should be isolated at the boundary.
 - **Immutable data flow**: The `StagePlan` type flows from planner output → `ExecutionPlan` → executor prompts → rendered output without mutation.
 - **Parallel execution**: The executor drives a DAG — stages with satisfied dependencies launch concurrently via a `Channel` abstraction.
@@ -34,21 +34,25 @@ All inter-component communication uses async generators yielding typed event str
 
 ```
 src/
-  agent.ts              — Core agent factory wrapping Claude Agent SDK's `query()`
-  orchestrator.ts       — Top-level pipeline: plan → approve → execute → scribe
-  executor.ts           — DAG executor: concurrent stage runner with Channel
-  execution-plan.ts     — ExecutionPlan type, StagePlan type, DAG validation (Kahn's)
-  render-plan.ts        — Text-based box-and-arrow DAG renderer (Grid class)
-  save-plan.ts          — Persist approved plans to .magus/plans/
-  scribe-runner.ts      — Factory for the scribe agent with its own MessageQueue
   code.ts               — CLI entrypoint (stdin/file prompt, ANSI output)
   code-helpers.ts       — Pure CLI flag parsers (--resume, --prompt, --auto-approve, -H, -v)
   assistant.ts          — Standalone interactive REPL (legacy/experimental)
-  message-queue.ts      — Simple push-only event buffer for tool side-effect tracking
   format-tool-call.ts   — Format tool name + input as a compact string
-  prompt-for-approval.ts— Deferred promise bridging orchestrator ↔ UI for plan approval
+
+  engine/
+    orchestrator.ts       — Top-level pipeline: plan → approve → execute → scribe
+    executor.ts           — DAG executor: concurrent stage runner with Channel
+    execution-plan.ts     — ExecutionPlan type, StagePlan type, DAG validation (Kahn's)
+    channel.ts            — Channel abstraction for concurrent stage launching
+    stage-prompt.ts       — Stage prompt formatter for coder agents
+    render-plan.ts        — Text-based box-and-arrow DAG renderer (Grid class)
+    save-plan.ts          — Persist approved plans to .magus/plans/
+    scribe-runner.ts      — Factory for the scribe agent with its own MessageQueue
+    prompt-for-approval.ts— Deferred promise bridging orchestrator ↔ UI for plan approval
+    message-queue.ts      — Simple push-only event buffer for tool side-effect tracking
 
   agents/
+    common.ts           — Core agent factory wrapping Claude Agent SDK’s `query()`
     planner.ts          — Planner agent: system prompt, JSON output schema, Opus model
     coder.ts            — Coder agent: TDD system prompt, Sonnet model, file tools
     scribe.ts           — Scribe agent: memory/skill writer, Opus model, date tool
@@ -96,7 +100,7 @@ src/
 
 ## Data Flow: StagePlan
 
-The `StagePlan` type (defined in `src/execution-plan.ts`) is the central data structure:
+The `StagePlan` type (defined in `src/engine/execution-plan.ts`) is the central data structure:
 
 ```typescript
 type StagePlan = {
@@ -111,11 +115,11 @@ type StagePlan = {
 ```
 
 Flow: `Planner LLM → PlannerOutput.stages[].plan → orchestrator maps to StageDefinition[] → createExecutionPlan() → Stage.plan`, consumed by:
-- `executor.ts`: `formatStagePlan(id, plan)` → coder prompt markdown
-- `orchestrator.ts`: `renderStageSection()` → scribe prompt (objective only)
-- `render-plan.ts`: `renderPlanDetails()` → user-facing verbose/summary view
+- `engine/executor.ts`: `formatStagePlan(id, plan)` → coder prompt markdown
+- `engine/orchestrator.ts`: `renderStageSection()` → scribe prompt (objective only)
+- `engine/render-plan.ts`: `renderPlanDetails()` → user-facing verbose/summary view
 
-**Note**: There are two distinct `formatStagePlan` functions — one in `executor.ts` (public, produces full coder-facing markdown with headers) and one in `render-plan.ts` (private, for verbose plan display). They serve different formatting needs.
+**Note**: There are two distinct `formatStagePlan` functions — one in `engine/executor.ts` (public, produces full coder-facing markdown with headers) and one in `engine/render-plan.ts` (private, for verbose plan display). They serve different formatting needs.
 
 ## Entrypoints
 
@@ -142,11 +146,11 @@ See skill: `.magus/skills/cli-flag-parser-pattern.md`
 
 ### Adding StagePlan Fields
 See skill: `.magus/skills/magus-stage-plan-data-flow.md`
-1. Add to `StagePlan` type in `execution-plan.ts`
+1. Add to `StagePlan` type in `engine/execution-plan.ts`
 2. Add to `OUTPUT_SCHEMA` in `planner.ts`
 3. Update `SYSTEM_PROMPT` in `planner.ts`
-4. Handle in `executor.ts` `formatStagePlan`
-5. Handle in `render-plan.ts` private `formatStagePlan`
+4. Handle in `engine/executor.ts` `formatStagePlan` (for coder prompts)
+5. Handle in `engine/render-plan.ts` private `formatStagePlan` (for verbose plan display)
 6. Update test helpers
 
 ### Testing
@@ -159,20 +163,20 @@ See skill: `.magus/skills/magus-stage-plan-data-flow.md`
 
 The following areas would benefit from refactoring to better align with the coder agent's functional programming principles (pure core, isolated side effects, small functions):
 
-### 1. `orchestrator.ts` — Monolithic `run()` Generator
+### 1. `engine/orchestrator.ts` — Monolithic `run()` Generator
 The `run()` method is a ~120-line async generator mixing concerns: planning loop, approval handling, plan saving, execution, scribing, and session management. This should be decomposed into smaller, composable functions:
 - Extract `planningLoop()` — handles the plan/approve/refine cycle
 - Extract `executionPhase()` — wraps `executePlan` with phase events
 - Extract `scribePhase()` — builds prompt and runs scribe
 - The `run()` method becomes a thin pipeline composing these phases
 
-### 2. `executor.ts` — Mixed Pure and Effectful Code
+### 2. `engine/executor.ts` — Mixed Pure and Effectful Code
 The file contains pure formatting functions (`formatStagePlan`, `buildStagePrompt`, `bulletItems`, etc.) alongside the effectful executor (`runStage`, `executePlan`) and the `Channel` abstraction. These should be separated:
-- Move `formatStagePlan`, `buildStagePrompt`, and helpers to a dedicated `stage-prompt.ts` module
-- Move `Channel` to its own `channel.ts` module
-- Keep `executor.ts` as a thin orchestration layer
+- Move `formatStagePlan`, `buildStagePrompt`, and helpers to a dedicated `engine/stage-prompt.ts` module
+- Move `Channel` to its own `engine/channel.ts` module
+- Keep `engine/executor.ts` as a thin orchestration layer
 
-### 3. `render-plan.ts` — Grid Class is Mutable
+### 3. `engine/render-plan.ts` — Grid Class is Mutable
 The `Grid` class uses mutable `cells[][]` with `set()` and `write()` methods. While contained, this could be refactored to use a builder pattern or functional approach where the grid is constructed via composition rather than mutation.
 
 ### 4. `ExecutionPlan` — Methods on Data
@@ -191,7 +195,7 @@ The CLI entrypoint mixes flag parsing, prompt reading, orchestrator construction
 - Extract a `main(args: string[])` function
 - Inject I/O dependencies (stdout, stdin, process.exit)
 
-### 7. `agent.ts` — `mapSdkMessage` Handles Unknown Block Types
+### 7. `agents/common.ts` — `mapSdkMessage` Handles Unknown Block Types
 The `mapSdkMessage` function has a `tool_result` case inside the `assistant` message type handler that uses `any` casts and handles an unexpected block type. This should be typed more precisely or documented as an SDK workaround.
 
 ### 8. Dead Files

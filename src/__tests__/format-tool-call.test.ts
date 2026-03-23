@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { formatToolCall } from "../format-tool-call";
+import { formatToolCall } from "../ui/format-tool-call";
 
 describe("formatToolCall", () => {
   // ── Basic formatting ───────────────────────────────────────────────────────

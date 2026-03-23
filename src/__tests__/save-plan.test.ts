@@ -6,7 +6,7 @@ import { join } from "path";
 
 // ── Import under test ────────────────────────────────────────────────────────
 
-import { slugifyPrompt, buildPlanPath, savePlan } from "../save-plan";
+import { slugifyPrompt, buildPlanPath, savePlan } from "../engine/save-plan";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 

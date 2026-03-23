@@ -1,9 +1,9 @@
-// ── ANSI escape constants (imported and re-exported from ansi module) ────────
+// ── ANSI escape constants (imported and re-exported from ansi module) ────────────
 
 import { RESET, BOLD, ITALIC, DIM, RED, PURPLE, GREEN, BLUE, LIGHT_GREY, GREY, LIGHT_BLUE } from './ansi';
 export { RESET, BOLD, ITALIC, DIM, RED, PURPLE, GREEN, BLUE, LIGHT_GREY, GREY, LIGHT_BLUE } from './ansi';
 
-// ── Heading style map ───────────────────────────────────────────────────────────
+// ── Heading style map ───────────────────────────────────────────────────────────────────
 
 const HEADING_STYLES: Record<number, string> = {
   1: `${BOLD}${RED}`,
@@ -12,7 +12,7 @@ const HEADING_STYLES: Record<number, string> = {
   4: `${BOLD}${BLUE}`,
 };
 
-// ── Regex patterns ──────────────────────────────────────────────────────────────────
+// ── Regex patterns ────────────────────────────────────────────────────────────────────────────────
 
 const ATX_RE         = /^(#{1,4}) (.+)/;
 const BOLD_RE        = /\*\*(.+?)\*\*/g;
@@ -24,7 +24,7 @@ const BLOCKQUOTE_RE  = /^> /;
 const SETEXT_H1_RE   = /^=+\s*$/;
 const SETEXT_H2_RE   = /^-+\s*$/;
 
-// ── Render state ────────────────────────────────────────────────────────────────────
+// ── Render state ────────────────────────────────────────────────────────────────────────────────────
 
 type RenderState = {
   readonly inCodeBlock: boolean;
@@ -38,7 +38,7 @@ const INITIAL_STATE: RenderState = {
   outputLines: [],
 };
 
-// ── Parsing helpers ──────────────────────────────────────────────────────────────────
+// ── Parsing helpers ─────────────────────────────────────────────────────────────────────────────────────
 
 function parseAtxHeading(line: string): { level: number; text: string } | null {
   const m = ATX_RE.exec(line);
@@ -59,7 +59,7 @@ function isEligibleForSetext(line: string): boolean {
   );
 }
 
-// ── Inline transformations ───────────────────────────────────────────────────────────
+// ── Inline transformations ───────────────────────────────────────────────────────────────────────────────────
 
 const applyBold = (line: string): string =>
   line.replace(BOLD_RE, `${BOLD}${LIGHT_BLUE}$1${RESET}`);
@@ -76,7 +76,7 @@ const applyLink = (line: string): string =>
 const applyInlineStyles = (line: string): string =>
   applyInlineCode(applyItalic(applyBold(applyLink(line))));
 
-// ── Line styling ─────────────────────────────────────────────────────────────────────
+// ── Line styling ─────────────────────────────────────────────────────────────────────────────────────────
 
 function styleHeading(level: number, text: string): string {
   return `${HEADING_STYLES[level] ?? BOLD}${text}${RESET}`;
@@ -89,7 +89,7 @@ function styleNonCodeLine(line: string): string {
   return applyInlineStyles(line);
 }
 
-// ── State transitions ─────────────────────────────────────────────────────────────
+// ── State transitions ─────────────────────────────────────────────────────────────────────────────────────
 
 function processFenceLine(state: RenderState, rawLine: string): RenderState {
   return {
@@ -139,7 +139,7 @@ function processLine(state: RenderState, rawLine: string): RenderState {
   return processNormalLine(state, rawLine);
 }
 
-// ── Public API ────────────────────────────────────────────────────────────────────────
+// ── Public API ──────────────────────────────────────────────────────────────────────────────────────────────
 
 export function stylizeMarkdown(text: string): string {
   const finalState = text.split("\n").reduce(processLine, INITIAL_STATE);

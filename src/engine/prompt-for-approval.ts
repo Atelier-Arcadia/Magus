@@ -1,4 +1,4 @@
-// ── Approval result ─────────────────────────────────────────────────────────
+// ── Approval result ────────────────────────────────────────────────────────────────────────
 
 /**
  * The user's response to a plan approval prompt.
@@ -11,7 +11,7 @@ export type ApprovalResult =
   | { approved: true }
   | { approved: false; feedback: string };
 
-// ── Approval request ────────────────────────────────────────────────────────
+// ── Approval request ────────────────────────────────────────────────────────────────────────
 
 /**
  * A deferred promise that bridges the orchestrator and the UI layer.
@@ -53,3 +53,4 @@ export function createApprovalRequest(): ApprovalRequest {
   });
   return { resolve, promise };
 }
+

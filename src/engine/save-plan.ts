@@ -2,7 +2,7 @@ import { existsSync } from "fs";
 import { mkdir, writeFile } from "fs/promises";
 import { dirname, join } from "path";
 
-// ── Pure helpers ──────────────────────────────────────────────────────────────
+// ── Pure helpers ──────────────────────────────────────────────────────────────────────────────────
 
 function truncateAtWordBoundary(slug: string, maxLen: number): string {
   if (slug.length <= maxLen) return slug;
@@ -31,7 +31,7 @@ export function buildPlanPath(cwd: string, date: Date, planName: string): string
   return join(cwd, ".magus", "plans", yyyy, mm, dd, `${planName}.md`);
 }
 
-// ── Collision resolution ─────────────────────────────────────────────────────
+// ── Collision resolution ─────────────────────────────────────────────────────────────────────────
 
 function withCounter(basePath: string, counter: number): string {
   return basePath.replace(/\.md$/, `-${counter}.md`);
@@ -44,7 +44,7 @@ function findFreePath(basePath: string): string {
   return withCounter(basePath, counter);
 }
 
-// ── Main export ────────────────────────────────────────────────────────────────
+// ── Main export ──────────────────────────────────────────────────────────────────────────────────
 
 export async function savePlan(options: {
   renderedPlan: string;
@@ -63,3 +63,4 @@ export async function savePlan(options: {
     return undefined;
   }
 }
+

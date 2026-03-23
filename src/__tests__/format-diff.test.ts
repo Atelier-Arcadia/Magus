@@ -7,12 +7,12 @@ import {
   parseHunkHeader,
   syntaxHighlight,
   type HunkNumbers,
-} from "../format-diff";
+} from "../ui/format-diff";
 import {
   GREEN, RED, BLUE, GREY, YELLOW, CYAN, PURPLE, RESET,
   RESET_FG, RESET_DIM, DIM, LIGHT_BLUE, LIGHT_GREY,
   BG_DIFF_ADD, BG_DIFF_REMOVE,
-} from "../ansi";
+} from "../ui/ansi";
 
 // ── Test fixtures ──────────────────────────────────────────────────────────────
 

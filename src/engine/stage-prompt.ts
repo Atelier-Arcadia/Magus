@@ -1,6 +1,6 @@
 import type { ExecutionPlan, Stage, StagePlan } from "./execution-plan";
 
-// ── Primitive formatters ────────────────────────────────────────────────────
+// ── Primitive formatters ────────────────────────────────────────────────────────
 
 function bulletItems(items: string[]): string {
   return items.map((item) => `* ${item}`).join("\n");
@@ -14,7 +14,7 @@ function acItems(items: string[]): string {
   return items.map((item) => `* [ ] ${item}`).join("\n");
 }
 
-// ── Section body builders ───────────────────────────────────────────────────
+// ── Section body builders ─────────────────────────────────────────────────────
 
 function formatContextBody(plan: StagePlan): string {
   const parts: string[] = [];
@@ -31,7 +31,7 @@ function formatScopeBody(plan: StagePlan): string {
   return parts.join("\n\n");
 }
 
-// ── Public API ───────────────────────────────────────────────────────────────
+// ── Public API ───────────────────────────────────────────────────────────────────
 
 /**
  * Convert a structured StagePlan object back into the markdown format

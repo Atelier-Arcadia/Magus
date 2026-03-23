@@ -34,7 +34,7 @@ const JUNCTION: Record<number, string> = {
   [UP | DOWN | LEFT | RIGHT]:   "┼",
 };
 
-// ── Character grid ──────────────────────────────────────────────────────────
+// ── Character grid ──────────────────────────────────────────────────────────────────
 
 class Grid {
   private cells: string[][];
@@ -68,7 +68,7 @@ class Grid {
   }
 }
 
-// ── Public API ──────────────────────────────────────────────────────────────
+// ── Public API ──────────────────────────────────────────────────────────────────
 
 /**
  * Render an ExecutionPlan as a text-based box-and-arrow DAG diagram.
@@ -80,18 +80,15 @@ export function renderExecutionPlan(plan: ExecutionPlan): string {
   const stages = Array.from(plan.stages.values());
   if (stages.length === 0) return "(empty plan)";
 
-  // ── Compute topological layers ─────────────────────────────────────────
   const layers = computeLayers(plan.stages);
 
-  // ── Box dimensions (uniform) ───────────────────────────────────────────
   const maxIdLen = Math.max(...stages.map((s) => s.id.length));
-  const innerWidth = maxIdLen + 4; // " \u25cb <id> "
-  const boxWidth = innerWidth + 2; // \u2502...\u2502
+  const innerWidth = maxIdLen + 4;
+  const boxWidth = innerWidth + 2;
   const boxHeight = 3;
   const gap = 3;
   const connectorZoneHeight = 3;
 
-  // ── Grid dimensions ────────────────────────────────────────────────────
   const maxLayerBoxes = Math.max(...layers.map((l) => l.length));
   const totalWidth = maxLayerBoxes * boxWidth + (maxLayerBoxes - 1) * gap;
   const totalHeight =
@@ -99,7 +96,6 @@ export function renderExecutionPlan(plan: ExecutionPlan): string {
 
   const grid = new Grid(totalWidth, totalHeight);
 
-  // ── Place boxes and record their center columns ─────────────────────
   const centerOf = new Map<string, number>();
   let currentRow = 0;
 
@@ -115,16 +111,9 @@ export function renderExecutionPlan(plan: ExecutionPlan): string {
       drawBox(grid, currentRow, left, innerWidth, stage);
     }
 
-    // ── Draw connectors to next layer ─────────────────────────────────────
     if (li < layers.length - 1) {
       const nextLayer = layers[li + 1];
-      drawConnectors(
-        grid,
-        currentRow + boxHeight,
-        layer,
-        nextLayer,
-        centerOf,
-      );
+      drawConnectors(grid, currentRow + boxHeight, layer, nextLayer, centerOf);
       currentRow += boxHeight + connectorZoneHeight;
     } else {
       currentRow += boxHeight;
@@ -134,7 +123,7 @@ export function renderExecutionPlan(plan: ExecutionPlan): string {
   return grid.toString();
 }
 
-// ── Box drawing ─────────────────────────────────────────────────────────────
+// ── Box drawing ─────────────────────────────────────────────────────────────────────────
 
 function drawBox(
   grid: Grid,
@@ -152,7 +141,7 @@ function drawBox(
   grid.write(row + 2, col, "\u2514" + "\u2500".repeat(innerWidth) + "\u2518");
 }
 
-// ── Connector drawing ──────────────────────────────────────────────────────
+// ── Connector drawing ──────────────────────────────────────────────────────────────────
 
 function drawConnectors(
   grid: Grid,
@@ -161,7 +150,6 @@ function drawConnectors(
   childLayer: Stage[],
   centerOf: Map<string, number>,
 ): void {
-  // Collect edges between these adjacent layers.
   const parentIds = new Set(parentLayer.map((s) => s.id));
   const edges: [number, number][] = [];
 
@@ -176,15 +164,10 @@ function drawConnectors(
 
   if (edges.length === 0) return;
 
-  // The connector zone has 3 rows:
-  //   exitRow:  \u2502 below each parent that has a downward edge
-  //   routeRow: horizontal routing with junction characters
-  //   entryRow: \u25bc above each child that has an upward edge
   const exitRow = startRow;
   const routeRow = startRow + 1;
   const entryRow = startRow + 2;
 
-  // Build direction bits for every column touched on the routing row.
   const bits = new Map<number, number>();
 
   for (const [pCol, cCol] of edges) {
@@ -203,30 +186,26 @@ function drawConnectors(
     }
   }
 
-  // Draw exit row.
   const parentExits = new Set(edges.map(([p]) => p));
   for (const col of parentExits) {
     grid.set(exitRow, col, "\u2502");
   }
 
-  // Draw routing row.
   for (const [col, b] of bits) {
     const ch = JUNCTION[b];
     if (ch) grid.set(routeRow, col, ch);
   }
 
-  // Draw entry row.
   const childEntries = new Set(edges.map(([, c]) => c));
   for (const col of childEntries) {
     grid.set(entryRow, col, "\u25bc");
   }
 }
 
-// ── Plan detail helpers ───────────────────────────────────────────────────
+// ── Plan detail helpers ──────────────────────────────────────────────────────────────────
 
 /**
  * Return the high-level summary of a stage plan.
- * Directly returns the structured `objective` field.
  */
 export function extractSummary(plan: StagePlan): string {
   return plan.objective;
@@ -234,8 +213,6 @@ export function extractSummary(plan: StagePlan): string {
 
 /**
  * Format the target file paths from a stage plan as a bullet list.
- * Returns a dash-prefixed bullet string per target, or an empty string
- * when the plan has no targets.
  */
 export function extractFilesToModify(plan: StagePlan): string {
   return plan.targets.map((t) => `- ${t}`).join("\n");
@@ -243,7 +220,6 @@ export function extractFilesToModify(plan: StagePlan): string {
 
 /**
  * Format a StagePlan into human-readable markdown sections.
- * Used by the verbose rendering path of `renderPlanDetails`.
  */
 function formatStagePlan(plan: StagePlan): string {
   const sections: string[] = [plan.objective];
@@ -265,13 +241,10 @@ function formatStagePlan(plan: StagePlan): string {
   return sections.join("\n\n");
 }
 
-// ── Plan details ──────────────────────────────────────────────────────────
+// ── Plan details ────────────────────────────────────────────────────────────────────────
 
 /**
  * Render stage plan details as formatted text, in topological order.
- *
- * When `verbose` is true the full plan and dependency info are included.
- * When `verbose` is false (default) only the summary and files-to-modify are shown.
  */
 export function renderPlanDetails(plan: ExecutionPlan, verbose: boolean = false): string {
   if (!plan.stages) return "(no stages)";
@@ -304,11 +277,10 @@ export function renderPlanDetails(plan: ExecutionPlan, verbose: boolean = false)
     .join("\n\n---\n\n");
 }
 
-// ── Layer computation ──────────────────────────────────────────────────────────
+// ── Layer computation ──────────────────────────────────────────────────────────────────────────
 
 /**
  * Assign each stage to a layer based on longest path from any root.
- * Returns an array of layers, each containing stages sorted by id.
  */
 function computeLayers(stages: Map<string, Stage>): Stage[][] {
   const layerOf = new Map<string, number>();
@@ -330,7 +302,6 @@ function computeLayers(stages: Map<string, Stage>): Stage[][] {
     getLayer(id);
   }
 
-  // Group stages into layers, sorted by id within each layer.
   const maxLayer = Math.max(...Array.from(layerOf.values()));
   const layers: Stage[][] = Array.from({ length: maxLayer + 1 }, () => []);
 
@@ -344,3 +315,4 @@ function computeLayers(stages: Map<string, Stage>): Stage[][] {
 
   return layers;
 }
+

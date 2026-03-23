@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createIdGenerator, mapOrchestratorEvent } from "../ui/mapEvent";
-import { formatToolCall } from "../format-tool-call";
+import { formatToolCall } from "../ui/format-tool-call";
 
 
 // ── ID generator ────────────────────────────────────────────────────────────

@@ -5,7 +5,7 @@ import {
   RESET, BOLD, ITALIC, DIM,
   RED, PURPLE, GREEN, BLUE,
   LIGHT_GREY, GREY, LIGHT_BLUE,
-} from "../stylize-markdown";
+} from "../ui/stylize-markdown";
 
 // ── Plain text passthrough ──────────────────────────────────────────────────
 

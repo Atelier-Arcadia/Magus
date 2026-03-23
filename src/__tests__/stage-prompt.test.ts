@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { buildStagePrompt, formatStagePlan } from "../stage-prompt";
-import { createExecutionPlan, type StagePlan } from "../execution-plan";
-import { createMessageQueue } from "../message-queue";
+import { buildStagePrompt, formatStagePlan } from "../engine/stage-prompt";
+import { createExecutionPlan, type StagePlan } from "../engine/execution-plan";
+import { createMessageQueue } from "../engine/message-queue";
 
 const queue = () => createMessageQueue();
 

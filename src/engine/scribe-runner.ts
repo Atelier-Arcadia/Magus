@@ -1,4 +1,4 @@
-import { createScribe } from "./agents/scribe";
+import { createScribe } from "../agents/scribe";
 import { createMessageQueue } from "./message-queue";
 
 /**
@@ -10,3 +10,4 @@ export function createScribeRunner() {
   const queue = createMessageQueue();
   return createScribe(queue);
 }
+

@@ -1,3 +1,9 @@
+import { createReadStream } from "node:fs";
+import { mapOrchestratorEvent } from "./ui/mapEvent";
+import { formatEntry } from "./ui/format-entry";
+import { RESET, DIM, CYAN } from "./ui/ansi";
+import type { OrchestratorEvent } from "./engine/orchestrator";
+
 /**
  * Parse the value of the `--resume` flag from a CLI args array.
  *
@@ -86,4 +92,56 @@ export async function readPrompt(promptFile: string | undefined): Promise<string
   const text = (await Bun.stdin.text()).trim();
   if (text.length === 0) throw new Error("No prompt was provided.");
   return text;
+}
+
+// ── Terminal prompt (for approval) ────────────────────────────────────────────────────────────
+
+// Reads directly from /dev/tty instead of process.stdin to avoid
+// conflicts with Bun's event loop and stdin stream state management.
+export function promptUser(question: string): Promise<string> {
+  return new Promise<string>((resolve) => {
+    process.stdout.write(question);
+    const tty = createReadStream("/dev/tty", { encoding: "utf8" });
+    tty.once("data", (chunk) => {
+      tty.destroy();
+      resolve(String(chunk).trimEnd());
+    });
+  });
+}
+
+// ── Event draining ───────────────────────────────────────────────────────────────────
+
+export async function drainEvents(
+  gen: AsyncGenerator<OrchestratorEvent>,
+  nextId: () => string,
+  autoApprove: boolean,
+  hideTools: boolean,
+  verbose: boolean,
+): Promise<void> {
+  for await (const event of gen) {
+    const entries = mapOrchestratorEvent(event, nextId, verbose);
+    for (const entry of entries) {
+      if (hideTools && (entry.kind === "tool_use" || entry.kind === "tool_error")) {
+        continue;
+      }
+      console.log(formatEntry(entry));
+    }
+
+    if (event.kind === "plan_approval_request") {
+      if (autoApprove) {
+        console.log(`${DIM}✓ Plan auto-approved.${RESET}`);
+        event.resolve({ approved: true });
+      } else {
+        const answer = await promptUser(
+          `${CYAN}Approve this plan? (y)es / (n)o, or provide feedback:${RESET} `,
+        );
+        const normalized = answer.trim().toLowerCase();
+        if (normalized === "y" || normalized === "yes") {
+          event.resolve({ approved: true });
+        } else {
+          event.resolve({ approved: false, feedback: answer });
+        }
+      }
+    }
+  }
 }

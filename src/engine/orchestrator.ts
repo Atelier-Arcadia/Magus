@@ -1,5 +1,5 @@
-import type { AgentEvent } from "./agent";
-import { createPlanner, type PlannerOutput } from "./agents/planner";
+import type { AgentEvent } from "../agents/common";
+import { createPlanner, type PlannerOutput } from "../agents/planner";
 import { createExecutionPlan, type ExecutionPlan, type Stage, type StageDefinition } from "./execution-plan";
 import { executePlan, type ExecutorEvent } from "./executor";
 import { createMessageQueue } from "./message-queue";
@@ -8,7 +8,7 @@ import { renderExecutionPlan } from "./render-plan";
 import { savePlan } from "./save-plan";
 import { createScribeRunner } from "./scribe-runner";
 
-// ── Orchestrator events ──────────────────────────────────────────────────────
+// ── Orchestrator events ─────────────────────────────────────────────────────────
 
 export type OrchestratorPhase = "planning" | "executing" | "scribing" | "done";
 
@@ -58,7 +58,7 @@ export type OrchestratorEvent =
   | SessionEvent
   | ExecutorEvent;
 
-// ── Orchestrator ─────────────────────────────────────────────────────────────
+// ── Orchestrator ────────────────────────────────────────────────────────────────────
 
 export type OrchestratorContext = {
   prompt: string;
@@ -74,7 +74,7 @@ export type Orchestrator = {
   run(context: OrchestratorContext): AsyncGenerator<OrchestratorEvent>;
 };
 
-// ── Pure helpers ─────────────────────────────────────────────────────────────
+// ── Pure helpers ────────────────────────────────────────────────────────────────────
 
 function renderStageSection(stage: Stage): string {
   const deps =
@@ -115,7 +115,7 @@ export function buildScribePrompt(
   ].join("\n");
 }
 
-// ── Planning types ───────────────────────────────────────────────────────────
+// ── Planning types ───────────────────────────────────────────────────────────────
 
 type PlanningResult = { plan: ExecutionPlan; sessionId?: string };
 
@@ -126,7 +126,7 @@ type IterationOutcome =
   | { kind: "feedback"; prompt: string; previousPlan: ExecutionPlan; sessionId?: string }
   | { kind: "no_stages"; sessionId?: string; previousPlan?: ExecutionPlan };
 
-// ── Planning helpers ─────────────────────────────────────────────────────────
+// ── Planning helpers ───────────────────────────────────────────────────────────────
 
 function updateFromPlannerEvent(
   event: AgentEvent,
@@ -214,7 +214,7 @@ async function* planningLoop(
   }
 }
 
-// ── Phase generators ─────────────────────────────────────────────────────────
+// ── Phase generators ───────────────────────────────────────────────────────────────
 
 async function* executionPhase(
   plan: ExecutionPlan,
@@ -241,7 +241,7 @@ async function* scribePhase(
   yield { kind: "phase_end", phase: "scribing" };
 }
 
-// ── Factory ──────────────────────────────────────────────────────────────────
+// ── Factory ──────────────────────────────────────────────────────────────────────────
 
 export type OrchestratorDeps = {
   savePlan?: typeof savePlan;
@@ -272,4 +272,3 @@ export function createOrchestrator(deps: OrchestratorDeps = {}): Orchestrator {
     },
   };
 }
-

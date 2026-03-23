@@ -1,4 +1,4 @@
-import { createAgent } from "../agent";
+import { createAgent } from "./common";
 import type { StagePlan } from "../execution-plan";
 
 // ── Structured output type ───────────────────────────────────────────────────────────

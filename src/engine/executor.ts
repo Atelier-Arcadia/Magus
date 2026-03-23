@@ -1,12 +1,12 @@
-import { type AgentEvent } from "./agent";
+import { type AgentEvent } from "../agents/common";
 import { createChannel, type Channel } from "./channel";
 import type { ExecutionPlan, Stage } from "./execution-plan";
 import { buildStagePrompt, formatStagePlan } from "./stage-prompt";
-import { createCoder } from "./agents/coder";
+import { createCoder } from "../agents/coder";
 
 export { buildStagePrompt, formatStagePlan };
 
-// ── Executor events ────────────────────────────────────────────────────────
+// ── Executor events ────────────────────────────────────────────────
 
 export type StageStartEvent = {
   kind: "stage_start";
@@ -28,7 +28,7 @@ export type StageAgentEvent = {
 
 export type ExecutorEvent = StageStartEvent | StageEndEvent | StageAgentEvent;
 
-// ── Stage runner ──────────────────────────────────────────────────────────
+// ── Stage runner ──────────────────────────────────────────────────────
 
 /**
  * Run a single stage by creating a coder agent with the stage's config
@@ -72,7 +72,7 @@ async function runStage(
   }
 }
 
-// ── Executor ──────────────────────────────────────────────────────────────
+// ── Executor ────────────────────────────────────────────────────────
 
 /**
  * Execute an approved plan by driving stages through the DAG concurrently.

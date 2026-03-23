@@ -1,9 +1,9 @@
 process.env.FORCE_COLOR = "1";
 
 import { describe, expect, test } from "bun:test";
-import { formatEntry } from "../format-entry";
-import { stylizeMarkdown } from "../stylize-markdown";
-import { RESET, BOLD, DIM, RED, YELLOW } from "../ansi";
+import { formatEntry } from "../ui/format-entry";
+import { stylizeMarkdown } from "../ui/stylize-markdown";
+import { RESET, BOLD, DIM, RED, YELLOW } from "../ui/ansi";
 
 // ── user_prompt ───────────────────────────────────────────────────────────────────────────
 

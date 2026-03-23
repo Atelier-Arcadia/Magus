@@ -2,7 +2,7 @@ import { tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { readFile, writeFile } from "fs/promises";
 import { createPatch } from "diff";
-import { formatDiff } from "../format-diff";
+import { formatDiff } from "../ui/format-diff";
 import type { MessageQueue } from "../message-queue";
 
 export function editFileTool(queue: MessageQueue) {
