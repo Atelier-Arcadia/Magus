@@ -1,11 +1,18 @@
 import { createOrchestrator } from "./engine/orchestrator";
 import { createIdGenerator } from "./ui/mapEvent";
-import { parseResumeSessionId, parsePromptFlag, parseAutoApprove, parseHideTools, parseVerbose, readPrompt, drainEvents, promptUser } from "./code-helpers";
+import { parseResumeSessionId, parsePromptFlag, parseAutoApprove, parseHideTools, parseVerbose, parseHelp, readPrompt, drainEvents, promptUser } from "./code-helpers";
+import { formatHelp } from "./ui/help";
 import { RESET, GRAY } from "./ui/ansi";
 
-// ── Main ─────────────────────────────────────────────────────────────────────
+// ── Main ────────────────────────────────────────────────────────────────────
 
 const args = process.argv.slice(2);
+
+if (parseHelp(args)) {
+  console.log(formatHelp());
+  process.exit(0);
+}
+
 const resumeSessionId = parseResumeSessionId(args);
 const promptFile = parsePromptFlag(args);
 const autoApprove = parseAutoApprove(args);

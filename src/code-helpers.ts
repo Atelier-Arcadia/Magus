@@ -74,6 +74,15 @@ export function parseVerbose(args: string[]): boolean {
 }
 
 /**
+ * Check whether the `-h` / `--help` boolean flag is present in a CLI args array.
+ *
+ * @returns `true` if `-h` or `--help` appears exactly (no partial matches).
+ */
+export function parseHelp(args: string[]): boolean {
+  return args.includes("-h") || args.includes("--help");
+}
+
+/**
  * Read prompt text from a file path or, when `promptFile` is `undefined`, from stdin.
  * Trims surrounding whitespace from the result.
  *

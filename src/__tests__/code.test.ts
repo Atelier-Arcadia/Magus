@@ -6,8 +6,10 @@ import {
   parseAutoApprove,
   parseHideTools,
   parseVerbose,
+  parseHelp,
   readPrompt,
 } from "../code-helpers";
+import { formatHelp } from "../ui/help";
 
 // ── parseResumeSessionId ────────────────────────────────────────────────────
 
@@ -211,5 +213,78 @@ describe("readPrompt", () => {
     const tmpPath = "/tmp/magus-test-prompt-trim.txt";
     await Bun.write(tmpPath, "\n\n  My prompt text.\n\n");
     expect(await readPrompt(tmpPath)).toBe("My prompt text.");
+  });
+});
+
+// ── parseHelp ──────────────────────────────────────────────────────────────
+
+describe("parseHelp", () => {
+  test("returns true when --help is present", () => {
+    expect(parseHelp(["--help"])).toBe(true);
+  });
+
+  test("returns true when -h is present", () => {
+    expect(parseHelp(["-h"])).toBe(true);
+  });
+
+  test("returns false when neither flag is present", () => {
+    expect(parseHelp([])).toBe(false);
+  });
+
+  test("returns true when flag appears alongside other flags", () => {
+    expect(parseHelp(["--verbose", "--help", "--auto-approve"])).toBe(true);
+  });
+
+  test("does not match partial string --helper", () => {
+    expect(parseHelp(["--helper"])).toBe(false);
+  });
+
+  test("does not match -H (uppercase - that is hide-tools)", () => {
+    expect(parseHelp(["-H"])).toBe(false);
+  });
+});
+
+// ── formatHelp ──────────────────────────────────────────────────────────────
+
+describe("formatHelp", () => {
+  test("returns a non-empty string", () => {
+    expect(typeof formatHelp()).toBe("string");
+    expect(formatHelp().length).toBeGreaterThan(0);
+  });
+
+  test("contains a Usage section", () => {
+    expect(formatHelp()).toContain("Usage");
+  });
+
+  test("contains a Flags section", () => {
+    expect(formatHelp()).toContain("Flags");
+  });
+
+  test("contains 'magus' (the tool name)", () => {
+    expect(formatHelp().toLowerCase()).toContain("magus");
+  });
+
+  test("mentions --resume flag", () => {
+    expect(formatHelp()).toContain("--resume");
+  });
+
+  test("mentions --prompt / -p flag", () => {
+    expect(formatHelp()).toContain("--prompt");
+  });
+
+  test("mentions --auto-approve flag", () => {
+    expect(formatHelp()).toContain("--auto-approve");
+  });
+
+  test("mentions --hide-tools / -H flag", () => {
+    expect(formatHelp()).toContain("--hide-tools");
+  });
+
+  test("mentions --verbose / -v flag", () => {
+    expect(formatHelp()).toContain("--verbose");
+  });
+
+  test("mentions --help / -h flag", () => {
+    expect(formatHelp()).toContain("--help");
   });
 });
