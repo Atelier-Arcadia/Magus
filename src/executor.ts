@@ -1,6 +1,10 @@
 import { type AgentEvent } from "./agent";
-import type { ExecutionPlan, Stage, StagePlan } from "./execution-plan";
+import { createChannel, type Channel } from "./channel";
+import type { ExecutionPlan, Stage } from "./execution-plan";
+import { buildStagePrompt, formatStagePlan } from "./stage-prompt";
 import { createCoder } from "./agents/coder";
+
+export { buildStagePrompt, formatStagePlan };
 
 // ── Executor events ────────────────────────────────────────────────────────
 
@@ -23,134 +27,6 @@ export type StageAgentEvent = {
 };
 
 export type ExecutorEvent = StageStartEvent | StageEndEvent | StageAgentEvent;
-
-// ── Channel ───────────────────────────────────────────────────────────────
-
-/**
- * A simple async channel that merges pushes from multiple concurrent
- * producers into a single async-iterable stream for the consumer.
- */
-type Channel<T> = {
-  push(value: T): void;
-  close(): void;
-  [Symbol.asyncIterator](): AsyncIterator<T>;
-};
-
-function createChannel<T>(): Channel<T> {
-  const buffer: T[] = [];
-  let closed = false;
-  let notify: (() => void) | null = null;
-
-  function wake() {
-    if (notify) {
-      const fn = notify;
-      notify = null;
-      fn();
-    }
-  }
-
-  return {
-    push(value: T) {
-      buffer.push(value);
-      wake();
-    },
-
-    close() {
-      closed = true;
-      wake();
-    },
-
-    async *[Symbol.asyncIterator]() {
-      while (true) {
-        while (buffer.length > 0) {
-          yield buffer.shift()!;
-        }
-        if (closed) return;
-        await new Promise<void>((r) => {
-          notify = r;
-        });
-      }
-    },
-  };
-}
-
-// ── Stage plan formatter ──────────────────────────────────────────────────
-
-function bulletItems(items: string[]): string {
-  return items.map((item) => `* ${item}`).join("\n");
-}
-
-function scopeItems(items: string[]): string {
-  return items.map((item) => `- ${item}`).join("\n");
-}
-
-function acItems(items: string[]): string {
-  return items.map((item) => `* [ ] ${item}`).join("\n");
-}
-
-function formatContextBody(plan: StagePlan): string {
-  const parts: string[] = [];
-  if (plan.context.length > 0) parts.push(`Files to inspect:\n${bulletItems(plan.context)}`);
-  if (plan.skills.length > 0) parts.push(`Skills:\n${bulletItems(plan.skills)}`);
-  if (plan.targets.length > 0) parts.push(`Files to modify:\n${bulletItems(plan.targets)}`);
-  return parts.join("\n\n");
-}
-
-function formatScopeBody(plan: StagePlan): string {
-  const parts: string[] = [];
-  if (plan.inScope.length > 0) parts.push(`In scope:\n${scopeItems(plan.inScope)}`);
-  if (plan.outScope.length > 0) parts.push(`Out of scope:\n${scopeItems(plan.outScope)}`);
-  return parts.join("\n\n");
-}
-
-/**
- * Convert a structured StagePlan object back into the markdown format
- * that coder agents expect as their prompt.
- */
-export function formatStagePlan(id: string, plan: StagePlan): string {
-  const sections: string[] = [`# Stage: ${id}`, "", plan.objective];
-
-  const contextBody = formatContextBody(plan);
-  if (contextBody) sections.push("", "## Context", "", contextBody);
-
-  const scopeBody = formatScopeBody(plan);
-  if (scopeBody) sections.push("", "## Scope", "", scopeBody);
-
-  if (plan.acs.length > 0) {
-    const acBody = `This work is only considered done when:\n${acItems(plan.acs)}`;
-    sections.push("", "## Acceptance Criteria", "", acBody);
-  }
-
-  return sections.join("\n");
-}
-
-// ── Stage prompt builder ──────────────────────────────────────────────────
-
-/**
- * Build the prompt for a stage, prepending context from completed
- * parent stages when the stage has dependencies.
- */
-export function buildStagePrompt(stage: Stage, plan: ExecutionPlan): string {
-  const stageMarkdown = formatStagePlan(stage.id, stage.plan);
-
-  if (stage.dependencies.length === 0) {
-    return stageMarkdown;
-  }
-
-  const parentSections = stage.dependencies
-    .map((depId) => plan.stages.get(depId)!)
-    .map((dep) => `### ${dep.id}\n${dep.result}`);
-
-  return [
-    "## Context from Completed Dependencies",
-    "",
-    ...parentSections,
-    "",
-    "---",
-    "",
-    stageMarkdown,
-  ].join("\n");
-}
 
 // ── Stage runner ──────────────────────────────────────────────────────────
 
