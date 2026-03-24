@@ -2,6 +2,7 @@ import type { OrchestratorEvent, AgentStreamEvent } from "../engine/orchestrator
 import type { StageEndEvent, StageAgentEvent } from "../engine/executor";
 import type { AgentEvent } from "../agents/common";
 import type { HistoryEntry } from "./types";
+import { formatSessionReport } from "../engine/orchestrator";
 import { formatToolCall } from "./format-tool-call";
 import { renderPlanDetails } from "./render-plan";
 
@@ -86,5 +87,7 @@ export function mapOrchestratorEvent(
       return mapStageAgentEvent(event, nextId);
     case "session":
       return [{ kind: "info", id: nextId(), text: `Session: ${event.sessionId}` }];
+    case "session_stats":
+      return [{ kind: "info", id: nextId(), text: formatSessionReport(event.stats) }];
   }
 }

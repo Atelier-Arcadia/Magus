@@ -50,12 +50,27 @@ export type SessionEvent = {
   sessionId: string;
 };
 
+// ── Session stats ────────────────────────────────────────────────────────────
+
+export type SessionStats = {
+  wallClockMs: number;
+  totalAgentMs: number;
+  totalTurns: number;
+  totalCostUsd: number;
+};
+
+export type SessionStatsEvent = {
+  kind: "session_stats";
+  stats: SessionStats;
+};
+
 export type OrchestratorEvent =
   | PhaseStartEvent
   | PhaseEndEvent
   | AgentStreamEvent
   | PlanApprovalEvent
   | SessionEvent
+  | SessionStatsEvent
   | ExecutorEvent;
 
 // ── Orchestrator ────────────────────────────────────────────────────────────────────
@@ -115,7 +130,57 @@ export function buildScribePrompt(
   ].join("\n");
 }
 
-// ── Planning types ───────────────────────────────────────────────────────────────
+// ── Stats helpers ───────────────────────────────────────────────────────────────────────
+
+type ExtractedStats = { durationMs: number; costUsd: number; numTurns: number };
+type AgentStatsAccumulator = { totalAgentMs: number; totalTurns: number; totalCostUsd: number };
+
+export function extractAgentStats(event: OrchestratorEvent): ExtractedStats | null {
+  if (
+    (event.kind === "agent_event" || event.kind === "stage_agent_event") &&
+    event.event.kind === "result"
+  ) {
+    return { durationMs: event.event.duration_ms, costUsd: event.event.cost_usd, numTurns: event.event.num_turns };
+  }
+  return null;
+}
+
+function accumulate(acc: AgentStatsAccumulator, stats: ExtractedStats): AgentStatsAccumulator {
+  return {
+    totalAgentMs: acc.totalAgentMs + stats.durationMs,
+    totalTurns: acc.totalTurns + stats.numTurns,
+    totalCostUsd: acc.totalCostUsd + stats.costUsd,
+  };
+}
+
+function msToHMS(ms: number): { hours: number; minutes: number; seconds: number } {
+  const totalSeconds = Math.floor(ms / 1000);
+  return {
+    hours: Math.floor(totalSeconds / 3600),
+    minutes: Math.floor((totalSeconds % 3600) / 60),
+    seconds: totalSeconds % 60,
+  };
+}
+
+function formatHMS(ms: number): string {
+  const { hours, minutes, seconds } = msToHMS(ms);
+  return `${hours} hours, ${minutes} minutes and ${seconds} seconds.`;
+}
+
+export function formatSessionReport(stats: SessionStats): string {
+  return `# ── Orchestrator ─ Session Statistics ──────────────────────────────────────
+
+The session completed in:
+  - ${formatHMS(stats.wallClockMs)}
+The total time spent by the agents is estimated to be:
+  - ${formatHMS(stats.totalAgentMs)}
+    
+The agents ran for a total of **${stats.totalTurns} turns**.
+The total estimated cost of this session was: **$${stats.totalCostUsd.toFixed(4)} USD**.
+# ───────────────────────────────────────────────────────────────────────────`
+}
+
+// ── Planning types ───────────────────────────────────────────────────────────────────────────
 
 type PlanningResult = { plan: ExecutionPlan; sessionId?: string };
 
@@ -241,6 +306,26 @@ async function* scribePhase(
   yield { kind: "phase_end", phase: "scribing" };
 }
 
+// ── Pipeline ──────────────────────────────────────────────────────────────────────────────
+
+async function* runPipeline(
+  planner: ReturnType<typeof createPlanner>,
+  scribe: ReturnType<typeof createScribeRunner>,
+  doSavePlan: typeof savePlan,
+  context: OrchestratorContext,
+): AsyncGenerator<OrchestratorEvent> {
+  if (context.sessionId) yield { kind: "session", sessionId: context.sessionId };
+  const result = yield* planningLoop(planner, context);
+  if (!result) return;
+  const { plan, sessionId } = result;
+  try {
+    await doSavePlan({ renderedPlan: renderExecutionPlan(plan), prompt: context.prompt, cwd: context.cwd });
+  } catch {}
+  yield* executionPhase(plan, context.cwd);
+  yield* scribePhase(scribe, context.prompt, plan, context.cwd);
+  if (sessionId) yield { kind: "session", sessionId };
+}
+
 // ── Factory ──────────────────────────────────────────────────────────────────────────
 
 export type OrchestratorDeps = {
@@ -254,21 +339,17 @@ export function createOrchestrator(deps: OrchestratorDeps = {}): Orchestrator {
 
   return {
     async *run(context: OrchestratorContext): AsyncGenerator<OrchestratorEvent> {
-      if (context.sessionId) yield { kind: "session", sessionId: context.sessionId };
-
-      const result = yield* planningLoop(planner, context);
-      if (!result) return;
-
-      const { plan, sessionId } = result;
-
-      try {
-        await doSavePlan({ renderedPlan: renderExecutionPlan(plan), prompt: context.prompt, cwd: context.cwd });
-      } catch {}
-
-      yield* executionPhase(plan, context.cwd);
-      yield* scribePhase(scribe, context.prompt, plan, context.cwd);
-
-      if (sessionId) yield { kind: "session", sessionId };
+      const startTime = Date.now();
+      let acc: AgentStatsAccumulator = { totalAgentMs: 0, totalTurns: 0, totalCostUsd: 0 };
+      for await (const event of runPipeline(planner, scribe, doSavePlan, context)) {
+        yield event;
+        const extracted = extractAgentStats(event);
+        if (extracted) acc = accumulate(acc, extracted);
+      }
+      yield {
+        kind: "session_stats",
+        stats: { wallClockMs: Date.now() - startTime, ...acc },
+      };
     },
   };
 }

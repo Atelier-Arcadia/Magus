@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createIdGenerator, mapOrchestratorEvent } from "../ui/mapEvent";
 import { formatToolCall } from "../ui/format-tool-call";
+import { formatSessionReport } from "../engine/orchestrator";
 
 
 // ── ID generator ────────────────────────────────────────────────────────────
@@ -494,6 +495,75 @@ describe("mapOrchestratorEvent – session", () => {
       fixedId("h1"),
     );
     expect(result).toEqual([{ kind: "info", id: "h1", text: "Session: abc-123" }]);
+  });
+});
+
+// ── session_stats ───────────────────────────────────────────────────────────
+
+describe("mapOrchestratorEvent – session_stats", () => {
+  const stats = {
+    wallClockMs: 90_000,
+    totalAgentMs: 45_000,
+    totalTurns: 7,
+    totalCostUsd: 0.0123,
+  };
+
+  test("returns exactly one entry", () => {
+    const result = mapOrchestratorEvent(
+      { kind: "session_stats", stats },
+      fixedId("h1"),
+    );
+    expect(result).toHaveLength(1);
+  });
+
+  test("entry kind is 'info'", () => {
+    const result = mapOrchestratorEvent(
+      { kind: "session_stats", stats },
+      fixedId("h1"),
+    );
+    expect(result[0].kind).toBe("info");
+  });
+
+  test("entry id comes from nextId", () => {
+    const result = mapOrchestratorEvent(
+      { kind: "session_stats", stats },
+      fixedId("h99"),
+    );
+    expect(result[0].id).toBe("h99");
+  });
+
+  test("entry text equals formatSessionReport(event.stats)", () => {
+    const result = mapOrchestratorEvent(
+      { kind: "session_stats", stats },
+      fixedId("h1"),
+    );
+    const expected = formatSessionReport(stats);
+    expect((result[0] as { kind: "info"; id: string; text: string }).text).toBe(expected);
+  });
+
+  test("calls nextId exactly once", () => {
+    let calls = 0;
+    mapOrchestratorEvent({ kind: "session_stats", stats }, () => { calls++; return "hX"; });
+    expect(calls).toBe(1);
+  });
+
+  test("zero-cost stats produce a report containing $0.0000 USD", () => {
+    const zeroStats = { wallClockMs: 0, totalAgentMs: 0, totalTurns: 0, totalCostUsd: 0 };
+    const result = mapOrchestratorEvent(
+      { kind: "session_stats", stats: zeroStats },
+      fixedId("h1"),
+    );
+    const text = (result[0] as { kind: "info"; id: string; text: string }).text;
+    expect(text).toContain("$0.0000 USD");
+  });
+
+  test("report text is consistent with direct formatSessionReport call", () => {
+    const directReport = formatSessionReport(stats);
+    const mappedResult = mapOrchestratorEvent(
+      { kind: "session_stats", stats },
+      fixedId("h1"),
+    );
+    expect((mappedResult[0] as any).text).toBe(directReport);
   });
 });
 

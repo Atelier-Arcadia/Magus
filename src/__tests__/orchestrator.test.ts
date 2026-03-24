@@ -241,7 +241,7 @@ describe("createOrchestrator \u2013 SessionEvent", () => {
         createOrchestrator().run({ prompt: "test prompt" }),
       );
 
-      expect(events[events.length - 1]).toEqual({
+      expect(events[events.length - 2]).toEqual({
         kind: "session",
         sessionId: "planner-session-end",
       });
@@ -442,7 +442,7 @@ describe("createOrchestrator \u2013 Scribing phase", () => {
 
 // ── buildScribePrompt unit tests ──────────────────────────────────────────
 
-const { buildScribePrompt } = await import("../engine/orchestrator");
+const { buildScribePrompt, formatSessionReport, extractAgentStats } = await import("../engine/orchestrator");
 
 describe("buildScribePrompt", () => {
   const mockPlan = {
@@ -570,3 +570,204 @@ describe("createOrchestrator \u2013 Plan saving", () => {
     expect(events).toContainEqual({ kind: "phase_start", phase: "scribing" });
   });
 });
+
+// ────────────────────────────────────────────────────────────────────────────
+
+describe("formatSessionReport", () => {
+  test("contains the heading line", () => {
+    const report = formatSessionReport({ wallClockMs: 0, totalAgentMs: 0, totalTurns: 0, totalCostUsd: 0 });
+    expect(report).toContain("# ── Orchestrator ─ Session Statistics ──");
+  });
+
+  test("formats wall-clock time as hours, minutes and seconds", () => {
+    // 3661000ms = 1h 1m 1s
+    const report = formatSessionReport({ wallClockMs: 3661000, totalAgentMs: 0, totalTurns: 0, totalCostUsd: 0 });
+    expect(report).toContain("1 hours, 1 minutes and 1 seconds");
+  });
+
+  test("formats agent time separately from wall-clock time", () => {
+    // 7322000ms = 2h 2m 2s
+    const report = formatSessionReport({ wallClockMs: 0, totalAgentMs: 7322000, totalTurns: 0, totalCostUsd: 0 });
+    expect(report).toContain("2 hours, 2 minutes and 2 seconds");
+  });
+
+  test("formats total turns as bold number", () => {
+    const report = formatSessionReport({ wallClockMs: 0, totalAgentMs: 0, totalTurns: 42, totalCostUsd: 0 });
+    expect(report).toContain("**42 turns**");
+  });
+
+  test("formats cost as $X.XXXX USD bold", () => {
+    const report = formatSessionReport({ wallClockMs: 0, totalAgentMs: 0, totalTurns: 0, totalCostUsd: 1.2345 });
+    expect(report).toContain("**$1.2345 USD**");
+  });
+
+  test("formats zero cost as $0.0000 USD", () => {
+    const report = formatSessionReport({ wallClockMs: 0, totalAgentMs: 0, totalTurns: 0, totalCostUsd: 0 });
+    expect(report).toContain("**$0.0000 USD**");
+  });
+
+  test("correctly decomposes 3661000ms: 1h 1m 1s (not 0h 61m 1s)", () => {
+    const report = formatSessionReport({ wallClockMs: 3661000, totalAgentMs: 0, totalTurns: 0, totalCostUsd: 0 });
+    expect(report).not.toContain("0 hours, 61 minutes");
+    expect(report).toContain("1 hours, 1 minutes and 1 seconds");
+  });
+
+  test("wall-clock section mentions 'The session completed in'", () => {
+    const report = formatSessionReport({ wallClockMs: 1000, totalAgentMs: 0, totalTurns: 0, totalCostUsd: 0 });
+    expect(report).toContain("The session completed in");
+  });
+
+  test("agent time section mentions 'total time spent by the agents'", () => {
+    const report = formatSessionReport({ wallClockMs: 0, totalAgentMs: 1000, totalTurns: 0, totalCostUsd: 0 });
+    expect(report).toContain("total time spent by the agents");
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+
+describe("extractAgentStats", () => {
+  test("returns stats for agent_event wrapping a result event", () => {
+    const event = {
+      kind: "agent_event",
+      phase: "planning",
+      event: { kind: "result", text: "", duration_ms: 1000, cost_usd: 0.01, num_turns: 3, session_id: "abc" },
+    };
+    expect(extractAgentStats(event as any)).toEqual({ durationMs: 1000, costUsd: 0.01, numTurns: 3 });
+  });
+
+  test("returns stats for stage_agent_event wrapping a result event", () => {
+    const event = {
+      kind: "stage_agent_event",
+      stageId: "stage-1",
+      event: { kind: "result", text: "", duration_ms: 2000, cost_usd: 0.05, num_turns: 5, session_id: "def" },
+    };
+    expect(extractAgentStats(event as any)).toEqual({ durationMs: 2000, costUsd: 0.05, numTurns: 5 });
+  });
+
+  test("returns null for agent_event with a non-result (message) event", () => {
+    const event = { kind: "agent_event", phase: "planning", event: { kind: "message", content: "hello" } };
+    expect(extractAgentStats(event as any)).toBeNull();
+  });
+
+  test("returns null for agent_event with a tool_use event", () => {
+    const event = { kind: "agent_event", phase: "planning", event: { kind: "tool_use", id: "x", tool: "t", input: {} } };
+    expect(extractAgentStats(event as any)).toBeNull();
+  });
+
+  test("returns null for stage_agent_event with a non-result event", () => {
+    const event = { kind: "stage_agent_event", stageId: "s", event: { kind: "message", content: "hi" } };
+    expect(extractAgentStats(event as any)).toBeNull();
+  });
+
+  test("returns null for phase_start event", () => {
+    const event = { kind: "phase_start", phase: "planning" };
+    expect(extractAgentStats(event as any)).toBeNull();
+  });
+
+  test("returns null for session event", () => {
+    const event = { kind: "session", sessionId: "abc" };
+    expect(extractAgentStats(event as any)).toBeNull();
+  });
+
+  test("returns null for stage_start event", () => {
+    const event = { kind: "stage_start", stageId: "s" };
+    expect(extractAgentStats(event as any)).toBeNull();
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+
+describe("createOrchestrator – Session Stats", () => {
+  beforeEach(() => {
+    plannerStructuredOutput = null;
+    plannerResultSessionIds = [];
+    plannerEventQueue = [];
+    plannerSideEffects = [];
+    plannerCallCount = 0;
+    approvalResultQueue = [];
+    scribeCallCount = 0;
+    scribeEventQueue = [];
+    savePlanCalls = [];
+  });
+
+  test("emits a session_stats event as the very last event", async () => {
+    plannerSideEffects[0] = () => addStage("stage-a");
+
+    const events = await collectEvents(
+      createOrchestrator().run({ prompt: "build something" }),
+    );
+
+    expect(events[events.length - 1].kind).toBe("session_stats");
+  });
+
+  test("emits session_stats as the last event even on early return (no stages)", async () => {
+    // plannerStructuredOutput stays null → early return path
+    const events = await collectEvents(
+      createOrchestrator().run({ prompt: "build something" }),
+    );
+
+    expect(events[events.length - 1].kind).toBe("session_stats");
+  });
+
+  test("session_stats wallClockMs is a non-negative number", async () => {
+    plannerSideEffects[0] = () => addStage("stage-a");
+
+    const events = await collectEvents(
+      createOrchestrator().run({ prompt: "build something" }),
+    );
+
+    const statsEvent = events[events.length - 1];
+    expect(typeof statsEvent.stats.wallClockMs).toBe("number");
+    expect(statsEvent.stats.wallClockMs).toBeGreaterThanOrEqual(0);
+  });
+
+  test("session_stats accumulates totalAgentMs and totalTurns from planner result event", async () => {
+    plannerSideEffects[0] = () => addStage("stage-a");
+    // Mock planner always emits: { duration_ms: 100, cost_usd: 0, num_turns: 1 }
+
+    const events = await collectEvents(
+      createOrchestrator().run({ prompt: "build something" }),
+    );
+
+    const statsEvent = events[events.length - 1];
+    expect(statsEvent.stats.totalAgentMs).toBe(100);
+    expect(statsEvent.stats.totalTurns).toBe(1);
+    expect(statsEvent.stats.totalCostUsd).toBe(0);
+  });
+
+  test("session_stats accumulates from both planner and scribe result events", async () => {
+    plannerSideEffects[0] = () => addStage("stage-a");
+    scribeEventQueue = [{
+      kind: "result",
+      text: "done",
+      duration_ms: 200,
+      cost_usd: 0.05,
+      num_turns: 2,
+      session_id: "scribe-session",
+    }];
+
+    const events = await collectEvents(
+      createOrchestrator().run({ prompt: "build something" }),
+    );
+
+    const statsEvent = events[events.length - 1];
+    // planner: 100ms + 1 turn + $0; scribe: 200ms + 2 turns + $0.05
+    expect(statsEvent.stats.totalAgentMs).toBe(300);
+    expect(statsEvent.stats.totalTurns).toBe(3);
+    expect(statsEvent.stats.totalCostUsd).toBe(0.05);
+  });
+
+  test("session_stats is emitted after the final session event when sessionId is present", async () => {
+    plannerSideEffects[0] = () => addStage("stage-a");
+    plannerResultSessionIds[0] = "session-xyz";
+
+    const events = await collectEvents(
+      createOrchestrator().run({ prompt: "build something" }),
+    );
+
+    const idxSession = events.findLastIndex((e: any) => e.kind === "session");
+    const idxStats = events.findLastIndex((e: any) => e.kind === "session_stats");
+    expect(idxStats).toBeGreaterThan(idxSession);
+  });
+});
+
