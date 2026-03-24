@@ -4,6 +4,7 @@ import {
   extractFilesToModify,
   renderPlanDetails,
   renderExecutionPlan,
+  renderCyclicPlan,
 } from "../ui/render-plan";
 import { createExecutionPlan, type StagePlan } from "../engine/execution-plan";
 import { createMessageQueue } from "../engine/message-queue";
@@ -275,5 +276,91 @@ describe("renderExecutionPlan", () => {
     const result = renderExecutionPlan(plan);
     expect(result).toContain("one");
     expect(result).toContain("two");
+  });
+});
+
+// ── renderCyclicPlan ──────────────────────────────────────────────────────────────────────────────
+
+describe("renderCyclicPlan", () => {
+  test("returns '(empty plan)' for an empty array", () => {
+    expect(renderCyclicPlan([])).toBe("(empty plan)");
+  });
+
+  test("renders a self-referential stage without throwing and includes the stage id", () => {
+    const result = renderCyclicPlan([{ id: "x", dependencies: ["x"] }]);
+    expect(result).toContain("x");
+    expect(result).toContain("\u250c"); // ┌
+    expect(result).toContain("\u2514"); // └
+  });
+
+  test("renders a two-stage cycle without infinite loop and includes both ids", () => {
+    const result = renderCyclicPlan([
+      { id: "a", dependencies: ["b"] },
+      { id: "b", dependencies: ["a"] },
+    ]);
+    expect(result).toContain("a");
+    expect(result).toContain("b");
+  });
+
+  test("renders a three-stage cycle without infinite loop and includes all ids", () => {
+    const result = renderCyclicPlan([
+      { id: "alpha", dependencies: ["gamma"] },
+      { id: "beta",  dependencies: ["alpha"] },
+      { id: "gamma", dependencies: ["beta"] },
+    ]);
+    expect(result).toContain("alpha");
+    expect(result).toContain("beta");
+    expect(result).toContain("gamma");
+  });
+
+  test("renders a mixed cyclic/acyclic graph and includes all stage ids", () => {
+    const result = renderCyclicPlan([
+      { id: "root",   dependencies: [] },
+      { id: "cycleA", dependencies: ["cycleB"] },
+      { id: "cycleB", dependencies: ["cycleA"] },
+    ]);
+    expect(result).toContain("root");
+    expect(result).toContain("cycleA");
+    expect(result).toContain("cycleB");
+  });
+
+  test("renders a single non-cyclic stage as a box with border characters", () => {
+    const result = renderCyclicPlan([{ id: "solo", dependencies: [] }]);
+    expect(result).toContain("solo");
+    expect(result).toContain("\u250c"); // ┌
+    expect(result).toContain("\u2510"); // ┐
+    expect(result).toContain("\u2514"); // └
+    expect(result).toContain("\u2518"); // ┘
+  });
+
+  test("renders a linear chain with connector arrow characters", () => {
+    const result = renderCyclicPlan([
+      { id: "first",  dependencies: [] },
+      { id: "second", dependencies: ["first"] },
+      { id: "third",  dependencies: ["second"] },
+    ]);
+    expect(result).toContain("first");
+    expect(result).toContain("second");
+    expect(result).toContain("third");
+    expect(result).toContain("\u25bc"); // ▼ downward entry arrow
+  });
+
+  test("renders stages with the pending status icon", () => {
+    const result = renderCyclicPlan([{ id: "task", dependencies: [] }]);
+    expect(result).toContain("\u25cb"); // ○ pending
+  });
+
+  test("all stage ids appear for a complex cyclic graph with an acyclic in-edge", () => {
+    // a→b→c→a (3-node cycle), d→b (external node pointing into cycle)
+    const result = renderCyclicPlan([
+      { id: "a", dependencies: ["b"] },
+      { id: "b", dependencies: ["c"] },
+      { id: "c", dependencies: ["a"] },
+      { id: "d", dependencies: ["b"] },
+    ]);
+    expect(result).toContain("a");
+    expect(result).toContain("b");
+    expect(result).toContain("c");
+    expect(result).toContain("d");
   });
 });

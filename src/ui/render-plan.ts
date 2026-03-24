@@ -239,6 +239,82 @@ export function renderExecutionPlan(plan: ExecutionPlan): string {
   return renderCells(metrics.totalWidth, metrics.totalHeight, cells);
 }
 
+// ── Cycle-safe layer computation ──────────────────────────────────────────────────────────────
+
+type StageNode = Readonly<{ id: string; dependencies: ReadonlyArray<string> }>;
+
+// Minimal Stage stub for rendering: status=pending, empty plan/queue/result.
+const stubStage = (id: string, dependencies: string[]): Stage => ({
+  id,
+  dependencies,
+  status: "pending",
+  plan: { objective: "", context: [], skills: [], targets: [], inScope: [], outScope: [], acs: [] },
+  queue: { push: () => {}, events: [] } as Stage["queue"],
+  result: "",
+});
+
+// DFS layer assignment with cycle guard. Back-edges (visiting.has) contribute layer 0,
+// breaking the cycle without infinite recursion. Results are memoised.
+function computeCycleSafeLayer(
+  id: string,
+  nodes: ReadonlyMap<string, StageNode>,
+  visiting: Set<string>,
+  memo: Map<string, number>,
+): number {
+  if (memo.has(id)) return memo.get(id)!;
+  if (visiting.has(id)) return 0;
+  const node = nodes.get(id);
+  if (!node || node.dependencies.length === 0) { memo.set(id, 0); return 0; }
+  visiting.add(id);
+  const layer = 1 + Math.max(...node.dependencies.map((d) => computeCycleSafeLayer(d, nodes, visiting, memo)));
+  visiting.delete(id);
+  memo.set(id, layer);
+  return layer;
+}
+
+// Builds non-empty layers from a possibly-cyclic stage list.
+// Back-edges are ignored; empty layers produced by the assignment are filtered out.
+function computeCyclicLayers(
+  stages: ReadonlyArray<{ id: string; dependencies: string[] }>,
+): Stage[][] {
+  const nodes    = new Map<string, StageNode>(stages.map((s) => [s.id, s]));
+  const memo     = new Map<string, number>();
+  const visiting = new Set<string>();
+  const layerOf  = (id: string) => computeCycleSafeLayer(id, nodes, visiting, memo);
+  const maxLayer = Math.max(...stages.map((s) => layerOf(s.id)));
+  const allLayers = Array.from({ length: maxLayer + 1 }, (_, li) =>
+    stages
+      .filter((s) => layerOf(s.id) === li)
+      .map((s) => stubStage(s.id, s.dependencies))
+      .sort((a, b) => a.id.localeCompare(b.id)),
+  );
+  return allLayers.filter((layer) => layer.length > 0);
+}
+
+// ── Public API: cyclic-tolerant DAG diagram ────────────────────────────────────────────────────
+
+/**
+ * Render a box-and-arrow diagram for a stage graph that may contain cycles.
+ *
+ * Uses cycle-safe DFS layer assignment so back-edges return layer 0 instead
+ * of infinite-looping. Back-edges are silently omitted from connectors.
+ * All stage ids will appear in labelled boxes in the output.
+ */
+export function renderCyclicPlan(
+  stages: ReadonlyArray<{ id: string; dependencies: string[] }>,
+): string {
+  if (stages.length === 0) return "(empty plan)";
+  const layers    = computeCyclicLayers(stages);
+  const allStages = layers.flat();
+  const metrics   = computeMetrics(allStages, layers);
+  const centerOf  = computeCenters(layers, metrics);
+  const cells: Cells = [
+    ...allBoxCells(layers, metrics),
+    ...allConnectorCells(layers, centerOf, metrics),
+  ];
+  return renderCells(metrics.totalWidth, metrics.totalHeight, cells);
+}
+
 // ── Public API: plan detail helpers ───────────────────────────────────────────────────────────────
 
 /**

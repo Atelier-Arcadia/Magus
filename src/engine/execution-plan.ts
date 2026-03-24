@@ -232,3 +232,65 @@ function validateDAG(stages: Map<string, Stage>): void {
     throw new Error("Execution plan contains a cycle");
   }
 }
+
+// ── Cycle detection ─────────────────────────────────────────────────────────
+
+type Color = "white" | "gray" | "black";
+type CycleStageDef = { id: string; dependencies: string[] };
+
+function buildDepsMap(stages: ReadonlyArray<CycleStageDef>): Map<string, string[]> {
+  return new Map(stages.map((s) => [s.id, s.dependencies]));
+}
+
+function extractCyclePath(path: string[], cycleStart: string): string[] {
+  return [...path.slice(path.indexOf(cycleStart)), cycleStart];
+}
+
+function processDep(
+  dep: string,
+  colors: Map<string, Color>,
+  path: string[],
+  deps: Map<string, string[]>,
+  cycles: string[][],
+): void {
+  if (colors.get(dep) === "gray") {
+    cycles.push(extractCyclePath(path, dep));
+  } else if (colors.get(dep) === "white") {
+    dfsVisit(dep, colors, path, deps, cycles);
+  }
+}
+
+function dfsVisit(
+  nodeId: string,
+  colors: Map<string, Color>,
+  path: string[],
+  deps: Map<string, string[]>,
+  cycles: string[][],
+): void {
+  colors.set(nodeId, "gray");
+  const currentPath = [...path, nodeId];
+  for (const dep of deps.get(nodeId) ?? []) {
+    processDep(dep, colors, currentPath, deps, cycles);
+  }
+  colors.set(nodeId, "black");
+}
+
+/**
+ * Inspect raw planner output for cycles before building an ExecutionPlan.
+ * Returns every cycle found as a path of stage IDs where the first ID is
+ * repeated at the end (e.g. ['a', 'b', 'a']).
+ * Returns an empty array when the graph is acyclic.
+ */
+export function detectCycles(
+  stages: ReadonlyArray<CycleStageDef>,
+): string[][] {
+  const colors = new Map<string, Color>(stages.map((s) => [s.id, "white"]));
+  const deps = buildDepsMap(stages);
+  const cycles: string[][] = [];
+  for (const stage of stages) {
+    if (colors.get(stage.id) === "white") {
+      dfsVisit(stage.id, colors, [], deps, cycles);
+    }
+  }
+  return cycles;
+}
