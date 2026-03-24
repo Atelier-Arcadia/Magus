@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 
 // ── Shared mock state ───────────────────────────────────────────────────────
 
@@ -9,7 +9,8 @@ let mockAnswer = "y";
 let mockEntries: { kind: string }[] = [];
 
 // ── Module mocks ────────────────────────────────────────────────────────────
-// mock.module() calls are hoisted before any imports by Bun's test runner.
+// Only node:fs is mocked at module level (for promptUser's TTY stream).
+// UI module dependencies are injected via the deps parameter instead.
 
 mock.module("node:fs", () => ({
   createReadStream: () => {
@@ -24,23 +25,21 @@ mock.module("node:fs", () => ({
   },
 }));
 
-mock.module("../ui/mapEvent", () => ({
-  createIdGenerator: () => () => "test-id",
-  mapOrchestratorEvent: (_event: unknown, _nextId: unknown, _verbose: unknown) => mockEntries,
-}));
+// ── Mock cleanup ────────────────────────────────────────────────────────────
+afterAll(() => { mock.restore(); });
 
-mock.module("../ui/format-entry", () => ({
-  formatEntry: (entry: { kind: string }) => `[${entry.kind}]`,
-}));
+import { drainEvents, promptUser, type DrainEventsDeps } from "../code-helpers";
 
-mock.module("../ui/ansi", () => ({
+// ── Injectable test dependencies ─────────────────────────────────────────────
+// Closes over mockEntries so reassignments in beforeEach/tests are visible.
+
+const testDeps: DrainEventsDeps = {
+  mapOrchestratorEvent: (_event, _nextId, _verbose) => mockEntries as any,
+  formatEntry: (entry) => `[${entry.kind}]`,
   RESET: "<RESET>",
   DIM: "<DIM>",
   CYAN: "<CYAN>",
-  GRAY: "<GRAY>",
-}));
-
-import { drainEvents, promptUser } from "../code-helpers";
+};
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -92,43 +91,43 @@ describe("drainEvents", () => {
   });
 
   test("completes without error when the generator is empty", async () => {
-    await expect(drainEvents(emitEvents([]), noopId, false, false, false)).resolves.toBeUndefined();
+    await expect(drainEvents(emitEvents([]), noopId, false, false, false, testDeps)).resolves.toBeUndefined();
   });
 
   test("logs a formatted entry for each HistoryEntry returned by mapOrchestratorEvent", async () => {
     mockEntries = [{ kind: "assistant_message" }];
-    await drainEvents(emitEvents([{ kind: "phase_start", phase: "planning" }]), noopId, false, false, false);
+    await drainEvents(emitEvents([{ kind: "phase_start", phase: "planning" }]), noopId, false, false, false, testDeps);
     expect(logSpy).toHaveBeenCalledWith("[assistant_message]");
   });
 
   test("does not log anything when mapOrchestratorEvent returns no entries", async () => {
     mockEntries = [];
-    await drainEvents(emitEvents([{ kind: "phase_end", phase: "planning" }]), noopId, false, false, false);
+    await drainEvents(emitEvents([{ kind: "phase_end", phase: "planning" }]), noopId, false, false, false, testDeps);
     expect(logSpy).not.toHaveBeenCalled();
   });
 
   test("skips tool_use entries when hideTools is true", async () => {
     mockEntries = [{ kind: "tool_use" }];
-    await drainEvents(emitEvents([{ kind: "agent_event" }]), noopId, false, true, false);
+    await drainEvents(emitEvents([{ kind: "agent_event" }]), noopId, false, true, false, testDeps);
     expect(logSpy).not.toHaveBeenCalled();
   });
 
   test("skips tool_error entries when hideTools is true", async () => {
     mockEntries = [{ kind: "tool_error" }];
-    await drainEvents(emitEvents([{ kind: "agent_event" }]), noopId, false, true, false);
+    await drainEvents(emitEvents([{ kind: "agent_event" }]), noopId, false, true, false, testDeps);
     expect(logSpy).not.toHaveBeenCalled();
   });
 
   test("logs tool_use entries when hideTools is false", async () => {
     mockEntries = [{ kind: "tool_use" }];
-    await drainEvents(emitEvents([{ kind: "agent_event" }]), noopId, false, false, false);
+    await drainEvents(emitEvents([{ kind: "agent_event" }]), noopId, false, false, false, testDeps);
     expect(logSpy).toHaveBeenCalledWith("[tool_use]");
   });
 
   test("auto-approves plan_approval_request and logs confirmation when autoApprove is true", async () => {
     const resolveMock = mock(() => {});
     const event = { kind: "plan_approval_request", resolve: resolveMock, plan: {}, renderedPlan: "" };
-    await drainEvents(emitEvents([event]), noopId, true, false, false);
+    await drainEvents(emitEvents([event]), noopId, true, false, false, testDeps);
     expect(resolveMock).toHaveBeenCalledWith({ approved: true });
     expect(logSpy).toHaveBeenCalled();
   });
@@ -137,7 +136,7 @@ describe("drainEvents", () => {
     const resolveMock = mock(() => {});
     const event = { kind: "plan_approval_request", resolve: resolveMock, plan: {}, renderedPlan: "" };
     mockAnswer = "y";
-    await drainEvents(emitEvents([event]), noopId, false, false, false);
+    await drainEvents(emitEvents([event]), noopId, false, false, false, testDeps);
     expect(resolveMock).toHaveBeenCalledWith({ approved: true });
   });
 
@@ -145,7 +144,7 @@ describe("drainEvents", () => {
     const resolveMock = mock(() => {});
     const event = { kind: "plan_approval_request", resolve: resolveMock, plan: {}, renderedPlan: "" };
     mockAnswer = "yes";
-    await drainEvents(emitEvents([event]), noopId, false, false, false);
+    await drainEvents(emitEvents([event]), noopId, false, false, false, testDeps);
     expect(resolveMock).toHaveBeenCalledWith({ approved: true });
   });
 
@@ -153,7 +152,7 @@ describe("drainEvents", () => {
     const resolveMock = mock(() => {});
     const event = { kind: "plan_approval_request", resolve: resolveMock, plan: {}, renderedPlan: "" };
     mockAnswer = "no, please add a test step";
-    await drainEvents(emitEvents([event]), noopId, false, false, false);
+    await drainEvents(emitEvents([event]), noopId, false, false, false, testDeps);
     expect(resolveMock).toHaveBeenCalledWith({ approved: false, feedback: "no, please add a test step" });
   });
 });

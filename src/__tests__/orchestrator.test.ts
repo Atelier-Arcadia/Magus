@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
 
 // ── Shared mock state ──────────────────────────────────────────────────────
@@ -76,7 +76,7 @@ mock.module("../agents/planner", () => ({
     },
 }));
 
-mock.module("../engine/render-plan", () => ({
+mock.module("../ui/render-plan", () => ({
   renderExecutionPlan: () => "Rendered Plan",
 }));
 
@@ -121,6 +121,8 @@ mock.module("../engine/scribe-runner", () => ({
       }
     },
 }));
+
+afterAll(() => { mock.restore(); });
 
 // savePlan is injected via createOrchestrator({ savePlan }) — no mock.module needed.
 

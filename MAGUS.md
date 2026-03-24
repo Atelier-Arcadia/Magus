@@ -45,7 +45,6 @@ src/
     execution-plan.ts     — ExecutionPlan type, StagePlan type, DAG validation (Kahn's)
     channel.ts            — Channel abstraction for concurrent stage launching
     stage-prompt.ts       — Stage prompt formatter for coder agents
-    render-plan.ts        — Text-based box-and-arrow DAG renderer (Grid class)
     save-plan.ts          — Persist approved plans to .magus/plans/
     scribe-runner.ts      — Factory for the scribe agent with its own MessageQueue
     prompt-for-approval.ts— Deferred promise bridging orchestrator ↔ UI for plan approval
@@ -68,6 +67,7 @@ src/
   ui/
     mapEvent.ts         — Pure mapper: OrchestratorEvent → HistoryEntry[]
     types.ts            — HistoryEntry discriminated union type
+    render-plan.ts      — Text-based box-and-arrow DAG renderer for ExecutionPlan
 
   __tests__/            — Co-located test files (bun:test)
 
@@ -117,9 +117,9 @@ type StagePlan = {
 Flow: `Planner LLM → PlannerOutput.stages[].plan → orchestrator maps to StageDefinition[] → createExecutionPlan() → Stage.plan`, consumed by:
 - `engine/executor.ts`: `formatStagePlan(id, plan)` → coder prompt markdown
 - `engine/orchestrator.ts`: `renderStageSection()` → scribe prompt (objective only)
-- `engine/render-plan.ts`: `renderPlanDetails()` → user-facing verbose/summary view
+- `ui/render-plan.ts`: `renderPlanDetails()` → user-facing verbose/summary view
 
-**Note**: There are two distinct `formatStagePlan` functions — one in `engine/executor.ts` (public, produces full coder-facing markdown with headers) and one in `engine/render-plan.ts` (private, for verbose plan display). They serve different formatting needs.
+**Note**: There are two distinct `formatStagePlan` functions — one in `engine/executor.ts` (public, produces full coder-facing markdown with headers) and one in `ui/render-plan.ts` (private, for verbose plan display). They serve different formatting needs.
 
 ## Entrypoints
 
@@ -150,7 +150,7 @@ See skill: `.magus/skills/magus-stage-plan-data-flow.md`
 2. Add to `OUTPUT_SCHEMA` in `planner.ts`
 3. Update `SYSTEM_PROMPT` in `planner.ts`
 4. Handle in `engine/executor.ts` `formatStagePlan` (for coder prompts)
-5. Handle in `engine/render-plan.ts` private `formatStagePlan` (for verbose plan display)
+5. Handle in `ui/render-plan.ts` private `formatStagePlan` (for verbose plan display)
 6. Update test helpers
 
 ### Testing
@@ -176,8 +176,8 @@ The file contains pure formatting functions (`formatStagePlan`, `buildStagePromp
 - Move `Channel` to its own `engine/channel.ts` module
 - Keep `engine/executor.ts` as a thin orchestration layer
 
-### 3. `engine/render-plan.ts` — Grid Class is Mutable
-The `Grid` class uses mutable `cells[][]` with `set()` and `write()` methods. While contained, this could be refactored to use a builder pattern or functional approach where the grid is constructed via composition rather than mutation.
+### 3. `ui/render-plan.ts` — Refactored (completed)
+The `Grid` class was removed and rewritten with pure functional Cell-based rendering in the prior stage. No further refactoring is needed here.
 
 ### 4. `ExecutionPlan` — Methods on Data
 The `ExecutionPlan` type bundles data (`stages` map) with methods (`ready()`, `markRunning()`, etc.) that mutate the stages in place. This violates immutability:

@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { extractSummary, extractFilesToModify, renderPlanDetails } from "../engine/render-plan";
+import {
+  extractSummary,
+  extractFilesToModify,
+  renderPlanDetails,
+  renderExecutionPlan,
+} from "../ui/render-plan";
 import { createExecutionPlan, type StagePlan } from "../engine/execution-plan";
 import { createMessageQueue } from "../engine/message-queue";
 
@@ -193,5 +198,82 @@ describe("renderPlanDetails", () => {
     expect(result).toContain("---");
     expect(result).toContain("### one");
     expect(result).toContain("### two");
+  });
+});
+
+// ── renderExecutionPlan ─────────────────────────────────────────────────────
+
+describe("renderExecutionPlan", () => {
+  test("returns '(empty plan)' for a plan with no stages", () => {
+    const plan = createExecutionPlan([]);
+    expect(renderExecutionPlan(plan)).toBe("(empty plan)");
+  });
+
+  test("renders a single stage as a box containing the stage id", () => {
+    const plan = createExecutionPlan([
+      { id: "build", plan: makePlan("build it"), queue: queue() },
+    ]);
+    const result = renderExecutionPlan(plan);
+    expect(result).toContain("build");
+    expect(result).toContain("\u250c"); // ┌
+    expect(result).toContain("\u2514"); // └
+    expect(result).toContain("\u2502"); // │
+    expect(result).toContain("\u2500"); // ─
+  });
+
+  test("renders a single stage with the pending status icon", () => {
+    const plan = createExecutionPlan([
+      { id: "step", plan: makePlan("do step"), queue: queue() },
+    ]);
+    expect(renderExecutionPlan(plan)).toContain("\u25cb"); // ○
+  });
+
+  test("renders all three box-border characters for a single stage", () => {
+    const plan = createExecutionPlan([
+      { id: "widget", plan: makePlan("make widget"), queue: queue() },
+    ]);
+    const result = renderExecutionPlan(plan);
+    expect(result).toContain("\u250c"); // ┌
+    expect(result).toContain("\u2510"); // ┐
+    expect(result).toContain("\u2514"); // └
+    expect(result).toContain("\u2518"); // ┘
+  });
+
+  test("renders a two-layer DAG with connector characters between layers", () => {
+    const plan = createExecutionPlan([
+      { id: "alpha", plan: makePlan("alpha"), queue: queue() },
+      { id: "beta", plan: makePlan("beta"), queue: queue(), dependencies: ["alpha"] },
+    ]);
+    const result = renderExecutionPlan(plan);
+    expect(result).toContain("alpha");
+    expect(result).toContain("beta");
+    // vertical connector from parent box exit
+    expect(result).toContain("\u2502"); // │
+    // downward arrow into child box
+    expect(result).toContain("\u25bc"); // ▼
+  });
+
+  test("renders a multi-layer DAG with two parallel roots merging into one child", () => {
+    const plan = createExecutionPlan([
+      { id: "a", plan: makePlan("a"), queue: queue() },
+      { id: "b", plan: makePlan("b"), queue: queue() },
+      { id: "c", plan: makePlan("c"), queue: queue(), dependencies: ["a", "b"] },
+    ]);
+    const result = renderExecutionPlan(plan);
+    expect(result).toContain("a");
+    expect(result).toContain("b");
+    expect(result).toContain("c");
+    // connector zone must include junction routing and entry arrow
+    expect(result).toContain("\u25bc"); // ▼
+  });
+
+  test("each stage id appears at least once in the rendered output", () => {
+    const plan = createExecutionPlan([
+      { id: "one", plan: makePlan("one"), queue: queue() },
+      { id: "two", plan: makePlan("two"), queue: queue(), dependencies: ["one"] },
+    ]);
+    const result = renderExecutionPlan(plan);
+    expect(result).toContain("one");
+    expect(result).toContain("two");
   });
 });

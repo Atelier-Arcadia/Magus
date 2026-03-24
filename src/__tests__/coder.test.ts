@@ -1,10 +1,14 @@
-import { describe, expect, test, mock } from "bun:test";
+import { afterAll, describe, expect, test, mock } from "bun:test";
 
 // Mock createAgent to capture the config it receives
 const createAgentMock = mock(() => "mocked-agent" as any);
+const { mapSdkMessage } = await import("../agents/common");
 mock.module("../agents/common", () => ({
   createAgent: createAgentMock,
+  mapSdkMessage,
 }));
+
+afterAll(() => { mock.restore(); });
 
 // Import after mocking
 const { createCoder } = await import("../agents/coder");

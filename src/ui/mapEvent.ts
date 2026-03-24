@@ -3,7 +3,7 @@ import type { StageEndEvent, StageAgentEvent } from "../engine/executor";
 import type { AgentEvent } from "../agents/common";
 import type { HistoryEntry } from "./types";
 import { formatToolCall } from "./format-tool-call";
-import { renderPlanDetails } from "../engine/render-plan";
+import { renderPlanDetails } from "./render-plan";
 
 // ── ID generator ──────────────────────────────────────────────────────────────
 

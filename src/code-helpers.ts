@@ -2,6 +2,7 @@ import { createReadStream } from "node:fs";
 import { mapOrchestratorEvent } from "./ui/mapEvent";
 import { formatEntry } from "./ui/format-entry";
 import { RESET, DIM, CYAN } from "./ui/ansi";
+import type { HistoryEntry } from "./ui/types";
 import type { OrchestratorEvent } from "./engine/orchestrator";
 
 /**
@@ -118,7 +119,27 @@ export function promptUser(question: string): Promise<string> {
   });
 }
 
-// ── Event draining ───────────────────────────────────────────────────────────────────
+// ── Event draining ─────────────────────────────────────────────────────────────
+
+export type DrainEventsDeps = {
+  readonly mapOrchestratorEvent: (
+    event: OrchestratorEvent,
+    nextId: () => string,
+    verbose: boolean,
+  ) => HistoryEntry[];
+  readonly formatEntry: (entry: HistoryEntry) => string;
+  readonly RESET: string;
+  readonly DIM: string;
+  readonly CYAN: string;
+};
+
+const defaultDrainEventsDeps: DrainEventsDeps = {
+  mapOrchestratorEvent,
+  formatEntry,
+  RESET,
+  DIM,
+  CYAN,
+};
 
 export async function drainEvents(
   gen: AsyncGenerator<OrchestratorEvent>,
@@ -126,23 +147,24 @@ export async function drainEvents(
   autoApprove: boolean,
   hideTools: boolean,
   verbose: boolean,
+  deps: DrainEventsDeps = defaultDrainEventsDeps,
 ): Promise<void> {
   for await (const event of gen) {
-    const entries = mapOrchestratorEvent(event, nextId, verbose);
+    const entries = deps.mapOrchestratorEvent(event, nextId, verbose);
     for (const entry of entries) {
       if (hideTools && (entry.kind === "tool_use" || entry.kind === "tool_error")) {
         continue;
       }
-      console.log(formatEntry(entry));
+      console.log(deps.formatEntry(entry));
     }
 
     if (event.kind === "plan_approval_request") {
       if (autoApprove) {
-        console.log(`${DIM}✓ Plan auto-approved.${RESET}`);
+        console.log(`${deps.DIM}✓ Plan auto-approved.${deps.RESET}`);
         event.resolve({ approved: true });
       } else {
         const answer = await promptUser(
-          `${CYAN}Approve this plan? (y)es / (n)o, or provide feedback:${RESET} `,
+          `${deps.CYAN}Approve this plan? (y)es / (n)o, or provide feedback:${deps.RESET} `,
         );
         const normalized = answer.trim().toLowerCase();
         if (normalized === "y" || normalized === "yes") {

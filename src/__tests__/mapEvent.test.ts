@@ -218,8 +218,8 @@ describe("mapOrchestratorEvent – agent_event / error", () => {
 
 describe("mapOrchestratorEvent \u2013 plan_approval_request", () => {
   test("returns an 'info' entry with renderedPlan and plan details", () => {
-    const { createExecutionPlan } = require("../execution-plan");
-    const { createMessageQueue } = require("../message-queue");
+    const { createExecutionPlan } = require("../engine/execution-plan");
+    const { createMessageQueue } = require("../engine/message-queue");
     const plan = createExecutionPlan([
       {
         id: "stage-a",
@@ -250,8 +250,8 @@ describe("mapOrchestratorEvent \u2013 plan_approval_request", () => {
 
 describe("mapOrchestratorEvent \u2013 plan_approval_request (verbose=true)", () => {
   test("includes full plan body (## sections) when verbose=true", () => {
-    const { createExecutionPlan } = require("../execution-plan");
-    const { createMessageQueue } = require("../message-queue");
+    const { createExecutionPlan } = require("../engine/execution-plan");
+    const { createMessageQueue } = require("../engine/message-queue");
     const plan = createExecutionPlan([
       {
         id: "stage-v",
@@ -284,8 +284,8 @@ describe("mapOrchestratorEvent \u2013 plan_approval_request (verbose=true)", () 
   });
 
   test("omits structured sections from plan body when verbose=false (explicit)", () => {
-    const { createExecutionPlan } = require("../execution-plan");
-    const { createMessageQueue } = require("../message-queue");
+    const { createExecutionPlan } = require("../engine/execution-plan");
+    const { createMessageQueue } = require("../engine/message-queue");
     const plan = createExecutionPlan([
       {
         id: "stage-s",
@@ -317,8 +317,8 @@ describe("mapOrchestratorEvent \u2013 plan_approval_request (verbose=true)", () 
   });
 
   test("verbose=false explicit produces the same output as the default (no third arg)", () => {
-    const { createExecutionPlan } = require("../execution-plan");
-    const { createMessageQueue } = require("../message-queue");
+    const { createExecutionPlan } = require("../engine/execution-plan");
+    const { createMessageQueue } = require("../engine/message-queue");
     const plan = createExecutionPlan([
       {
         id: "stage-d",

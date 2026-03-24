@@ -4,7 +4,7 @@ import { createExecutionPlan, type ExecutionPlan, type Stage, type StageDefiniti
 import { executePlan, type ExecutorEvent } from "./executor";
 import { createMessageQueue } from "./message-queue";
 import { createApprovalRequest, type ApprovalResult } from "./prompt-for-approval";
-import { renderExecutionPlan } from "./render-plan";
+import { renderExecutionPlan } from "../ui/render-plan";
 import { savePlan } from "./save-plan";
 import { createScribeRunner } from "./scribe-runner";
 
