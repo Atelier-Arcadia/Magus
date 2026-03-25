@@ -63,7 +63,22 @@ function mapStageAgentEvent(event: StageAgentEvent, nextId: () => string): Histo
   }
 }
 
-// ── Public API ───────────────────────────────────────────────────────────────
+// ── Cycle-detected formatter ──────────────────────────────────────────────────
+
+function formatCycleEntry(renderedPlan: string, cycles: string[][]): string {
+  const cycleLines = cycles.map((c) => `* ${c.join(" → ")}`).join("\n");
+  const cyclesSection = cycles.length > 0 ? ["\nCycles detected:", cycleLines] : [];
+  return [
+    "# ── Orchestrator ─ Cycles Detected ──",
+    "",
+    renderedPlan,
+    ...cyclesSection,
+    "",
+    "Re-planning is in progress…",
+  ].join("\n");
+}
+
+// ── Public API ───────────────────────────────────────────────────────────────────
 
 export function mapOrchestratorEvent(
   event: OrchestratorEvent,
@@ -79,6 +94,8 @@ export function mapOrchestratorEvent(
       return mapAgentStreamEvent(event, nextId);
     case "plan_approval_request":
       return [{ kind: "info", id: nextId(), text: event.renderedPlan + "\n\n" + renderPlanDetails(event.plan, verbose) }];
+    case "cycle_detected":
+      return [{ kind: "info", id: nextId(), text: formatCycleEntry(event.renderedPlan, event.cycles) }];
     case "stage_start":
       return [{ kind: "stage_status", id: nextId(), text: `\u25b6 Stage: ${event.stageId}` }];
     case "stage_end":

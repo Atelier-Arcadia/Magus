@@ -594,3 +594,68 @@ describe("mapOrchestratorEvent – purity", () => {
 });
 
 
+
+// ── cycle_detected ──────────────────────────────────────────────────────────
+
+describe("mapOrchestratorEvent – cycle_detected", () => {
+  const VALID_ENTRY_KINDS = new Set([
+    "user_prompt", "assistant_message", "tool_use", "tool_error",
+    "phase", "stage_status", "info", "result", "error",
+  ]);
+
+  const cycleEvent = {
+    kind: "cycle_detected" as const,
+    renderedPlan: "unique-rendered-plan-string",
+    cycles: [["alpha", "beta", "alpha"], ["gamma", "delta", "gamma"]],
+  };
+
+  test("returns at least one entry", () => {
+    const result = mapOrchestratorEvent(cycleEvent, fixedId("h1"));
+    expect(result.length).toBeGreaterThan(0);
+  });
+
+  test("all returned entries use existing HistoryEntry kinds (no new kinds introduced)", () => {
+    const result = mapOrchestratorEvent(cycleEvent, fixedId("h1"));
+    for (const entry of result) {
+      expect(VALID_ENTRY_KINDS.has(entry.kind)).toBe(true);
+    }
+  });
+
+  test("combined entry text contains 'Orchestrator'", () => {
+    const result = mapOrchestratorEvent(cycleEvent, fixedId("h1"));
+    const allText = result.map((e) => ("text" in e ? e.text : "") + ("label" in e ? e.label : "")).join("\n");
+    expect(allText).toContain("Orchestrator");
+  });
+
+  test("combined entry text contains 'Cycles Detected'", () => {
+    const result = mapOrchestratorEvent(cycleEvent, fixedId("h1"));
+    const allText = result.map((e) => ("text" in e ? e.text : "") + ("label" in e ? e.label : "")).join("\n");
+    expect(allText).toContain("Cycles Detected");
+  });
+
+  test("combined entry text includes the renderedPlan string verbatim", () => {
+    const result = mapOrchestratorEvent(cycleEvent, fixedId("h1"));
+    const allText = result.map((e) => ("text" in e ? e.text : "")).join("\n");
+    expect(allText).toContain("unique-rendered-plan-string");
+  });
+
+  test("combined entry text includes a re-planning message", () => {
+    const result = mapOrchestratorEvent(cycleEvent, fixedId("h1"));
+    const allText = result.map((e) => ("text" in e ? e.text : "")).join("\n").toLowerCase();
+    expect(allText).toMatch(/re.?plan/);
+  });
+
+  test("handles an empty cycles array without throwing", () => {
+    expect(() =>
+      mapOrchestratorEvent(
+        { kind: "cycle_detected", renderedPlan: "plan", cycles: [] },
+        fixedId("h1"),
+      ),
+    ).not.toThrow();
+  });
+
+  test("uses the id returned by nextId", () => {
+    const result = mapOrchestratorEvent(cycleEvent, fixedId("h99"));
+    expect(result[0].id).toBe("h99");
+  });
+});

@@ -1,10 +1,10 @@
 import type { AgentEvent } from "../agents/common";
 import { createPlanner, type PlannerOutput } from "../agents/planner";
-import { createExecutionPlan, type ExecutionPlan, type Stage, type StageDefinition } from "./execution-plan";
+import { createExecutionPlan, detectCycles, type ExecutionPlan, type Stage, type StageDefinition } from "./execution-plan";
 import { executePlan, type ExecutorEvent } from "./executor";
 import { createMessageQueue } from "./message-queue";
 import { createApprovalRequest, type ApprovalResult } from "./prompt-for-approval";
-import { renderExecutionPlan } from "../ui/render-plan";
+import { renderExecutionPlan, renderCyclicPlan } from "../ui/render-plan";
 import { savePlan } from "./save-plan";
 import { createScribeRunner } from "./scribe-runner";
 
@@ -64,6 +64,16 @@ export type SessionStatsEvent = {
   stats: SessionStats;
 };
 
+/**
+ * Emitted when the planner produces a plan with cyclic stage dependencies.
+ * The orchestrator will automatically re-invoke the planner with corrective feedback.
+ */
+export type CycleDetectedEvent = {
+  kind: "cycle_detected";
+  renderedPlan: string;
+  cycles: string[][];
+};
+
 export type OrchestratorEvent =
   | PhaseStartEvent
   | PhaseEndEvent
@@ -71,6 +81,7 @@ export type OrchestratorEvent =
   | PlanApprovalEvent
   | SessionEvent
   | SessionStatsEvent
+  | CycleDetectedEvent
   | ExecutorEvent;
 
 // ── Orchestrator ────────────────────────────────────────────────────────────────────
@@ -188,7 +199,7 @@ type PlannerIterationResult = { output?: PlannerOutput; sessionId?: string };
 
 type IterationOutcome =
   | { kind: "approved"; plan: ExecutionPlan; sessionId?: string }
-  | { kind: "feedback"; prompt: string; previousPlan: ExecutionPlan; sessionId?: string }
+  | { kind: "feedback"; prompt: string; previousPlan?: ExecutionPlan; sessionId?: string }
   | { kind: "no_stages"; sessionId?: string; previousPlan?: ExecutionPlan };
 
 // ── Planning helpers ───────────────────────────────────────────────────────────────
@@ -249,6 +260,23 @@ async function* resolveNoStages(
   return undefined;
 }
 
+function formatCyclePath(cycle: string[]): string {
+  const [first, ...rest] = cycle;
+  return `${first} depends on ${rest.join(" which depends on ")}`;
+}
+
+function buildCycleFeedback(cycles: string[][]): string {
+  const cycleList = cycles.map((c) => `* ${formatCyclePath(c)}`).join("\n");
+  return [
+    "<feedback>",
+    "The plan you produced contains cyclic dependencies. Please restructure the stages to form a directed acyclic graph (DAG).",
+    "",
+    "Cycles detected:",
+    cycleList,
+    "</feedback>",
+  ].join("\n");
+}
+
 async function* planningIteration(
   planner: ReturnType<typeof createPlanner>,
   params: { prompt: string; cwd?: string; sessionId?: string },
@@ -257,6 +285,12 @@ async function* planningIteration(
   const { sessionId, output } = yield* runPlannerIteration(planner, params);
   if (!output || output.stages.length === 0) {
     return { kind: "no_stages", sessionId, previousPlan };
+  }
+  const cycles = detectCycles(output.stages);
+  if (cycles.length > 0) {
+    const renderedPlan = renderCyclicPlan(output.stages);
+    yield { kind: "cycle_detected", renderedPlan, cycles };
+    return { kind: "feedback", prompt: buildCycleFeedback(cycles), previousPlan, sessionId };
   }
   const plan = buildPlan(output.stages);
   const approval = yield* requestApproval(plan);

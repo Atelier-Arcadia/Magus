@@ -44,6 +44,15 @@ let scribeEventQueue: any[] = [];
 /** Calls captured by the mock savePlan. */
 let savePlanCalls: any[] = [];
 
+/** Queue of `string[][]` values returned by the mock detectCycles (one per call). */
+let detectCyclesQueue: string[][][] = [];
+
+/** Params captured by the mock planner on each invocation (index = call index). */
+let plannerCapturedParams: any[] = [];
+
+/** How many times the mock createExecutionPlan has been called. */
+let createExecutionPlanCallCount = 0;
+
 // ── Module mocks ───────────────────────────────────────────────────────────
 
 mock.module("../engine/message-queue", () => ({
@@ -54,6 +63,7 @@ mock.module("../agents/planner", () => ({
   createPlanner: () =>
     async function* (_ctx: any) {
       const idx = plannerCallCount++;
+      plannerCapturedParams.push(_ctx);
       // Reset structured output at the start of each invocation so that a
       // second planning round (implicit-approval loop) sees no stages by default.
       plannerStructuredOutput = null;
@@ -78,10 +88,12 @@ mock.module("../agents/planner", () => ({
 
 mock.module("../ui/render-plan", () => ({
   renderExecutionPlan: () => "Rendered Plan",
+  renderCyclicPlan: () => "Cyclic Plan Render",
 }));
 
 mock.module("../engine/execution-plan", () => ({
   createExecutionPlan: (stageDefs: any[]) => {
+    createExecutionPlanCallCount++;
     const stagesMap = new Map(
       stageDefs.map((s: any) => [s.id, { ...s, status: "pending" }]),
     );
@@ -94,6 +106,7 @@ mock.module("../engine/execution-plan", () => ({
       done: () => true,
     };
   },
+  detectCycles: (_stages: any) => detectCyclesQueue.shift() ?? [],
 }));
 
 mock.module("../engine/prompt-for-approval", () => ({
@@ -771,3 +784,137 @@ describe("createOrchestrator – Session Stats", () => {
   });
 });
 
+describe("createOrchestrator \u2013 Cycle Detection", () => {
+  beforeEach(() => {
+    plannerStructuredOutput = null;
+    plannerResultSessionIds = [];
+    plannerEventQueue = [];
+    plannerSideEffects = [];
+    plannerCallCount = 0;
+    plannerCapturedParams = [];
+    approvalResultQueue = [];
+    scribeCallCount = 0;
+    scribeEventQueue = [];
+    savePlanCalls = [];
+    detectCyclesQueue = [];
+    createExecutionPlanCallCount = 0;
+  });
+
+  test("yields cycle_detected event when planner output contains cycles", async () => {
+    plannerSideEffects[0] = () => addStage("a", ["b"]);
+    detectCyclesQueue = [[["a", "b", "a"]]];
+    plannerSideEffects[1] = null; // second call: no stages → early return
+
+    const events = await collectEvents(
+      createOrchestrator().run({ prompt: "test" }),
+    );
+
+    const cycleEvent = events.find((e: any) => e.kind === "cycle_detected");
+    expect(cycleEvent).toBeDefined();
+  });
+
+  test("cycle_detected event contains renderedPlan from renderCyclicPlan and cycle paths", async () => {
+    const cycles = [["a", "b", "a"]];
+    detectCyclesQueue = [cycles];
+    plannerSideEffects[0] = () => addStage("a", ["b"]);
+    plannerSideEffects[1] = null;
+
+    const events = await collectEvents(
+      createOrchestrator().run({ prompt: "test" }),
+    );
+
+    const cycleEvent = events.find((e: any) => e.kind === "cycle_detected");
+    expect(cycleEvent).toEqual({
+      kind: "cycle_detected",
+      renderedPlan: "Cyclic Plan Render",
+      cycles,
+    });
+  });
+
+  test("does not yield plan_approval_request when cycles are detected", async () => {
+    detectCyclesQueue = [[["a", "b", "a"]]];
+    plannerSideEffects[0] = () => addStage("a", ["b"]);
+    plannerSideEffects[1] = null;
+
+    const events = await collectEvents(
+      createOrchestrator().run({ prompt: "test" }),
+    );
+
+    const approvalEvents = events.filter((e: any) => e.kind === "plan_approval_request");
+    expect(approvalEvents).toHaveLength(0);
+  });
+
+  test("does not call createExecutionPlan when cycles are detected", async () => {
+    detectCyclesQueue = [[["a", "b", "a"]]];
+    plannerSideEffects[0] = () => addStage("a", ["b"]);
+    plannerSideEffects[1] = null;
+
+    await collectEvents(
+      createOrchestrator().run({ prompt: "test" }),
+    );
+
+    expect(createExecutionPlanCallCount).toBe(0);
+  });
+
+  test("re-invokes the planner after cycle detection", async () => {
+    detectCyclesQueue = [[["a", "b", "a"]]];
+    plannerSideEffects[0] = () => addStage("a", ["b"]);
+    plannerSideEffects[1] = null;
+
+    await collectEvents(
+      createOrchestrator().run({ prompt: "test" }),
+    );
+
+    expect(plannerCallCount).toBe(2);
+  });
+
+  test("second planner invocation receives feedback describing detected cycles", async () => {
+    detectCyclesQueue = [[["a", "b", "a"]]];
+    plannerSideEffects[0] = () => addStage("a", ["b"]);
+    plannerSideEffects[1] = null;
+
+    await collectEvents(
+      createOrchestrator().run({ prompt: "test" }),
+    );
+
+    expect(plannerCapturedParams[1]?.prompt).toContain("a depends on b which depends on a");
+  });
+
+  test("cyclic first plan then valid second plan proceeds to plan approval", async () => {
+    detectCyclesQueue = [[["a", "b", "a"]]]; // first call returns cycles
+    plannerSideEffects[0] = () => addStage("a", ["b"]);
+    plannerSideEffects[1] = () => addStage("c"); // second call: valid plan (detectCycles defaults to [])
+
+    const events = await collectEvents(
+      createOrchestrator().run({ prompt: "test" }),
+    );
+
+    const approvalEvents = events.filter((e: any) => e.kind === "plan_approval_request");
+    expect(approvalEvents).toHaveLength(1);
+  });
+
+  test("phase sequence: two planning phases then executing when cycle then valid plan", async () => {
+    detectCyclesQueue = [[["a", "b", "a"]]];
+    plannerSideEffects[0] = () => addStage("a", ["b"]);
+    plannerSideEffects[1] = () => addStage("c");
+
+    const events = await collectEvents(
+      createOrchestrator().run({ prompt: "test" }),
+    );
+
+    const phases = events
+      .filter((e: any) => e.kind === "phase_start" || e.kind === "phase_end")
+      .map((e: any) => `${e.kind}:${e.phase}`);
+
+    expect(phases).toEqual([
+      "phase_start:planning",
+      "phase_end:planning",
+      "phase_start:planning",
+      "phase_end:planning",
+      "phase_start:executing",
+      "phase_end:executing",
+      "phase_start:scribing",
+      "phase_end:scribing",
+    ]);
+  });
+});
