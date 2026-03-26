@@ -386,7 +386,7 @@ describe("mapOrchestratorEvent – stage_end (failed)", () => {
 // ── stage_agent_event ────────────────────────────────────────────────────────
 
 describe("mapOrchestratorEvent – stage_agent_event / message", () => {
-  test("returns an 'assistant_message' entry with the content", () => {
+  test("returns an 'assistant_message' entry prefixed with [stageId]", () => {
     const result = mapOrchestratorEvent(
       {
         kind: "stage_agent_event",
@@ -395,7 +395,7 @@ describe("mapOrchestratorEvent – stage_agent_event / message", () => {
       },
       fixedId("h1"),
     );
-    expect(result).toEqual([{ kind: "assistant_message", id: "h1", text: "thinking…" }]);
+    expect(result).toEqual([{ kind: "assistant_message", id: "h1", text: "[build] thinking…" }]);
   });
 });
 

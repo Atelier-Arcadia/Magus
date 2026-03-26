@@ -51,7 +51,7 @@ function mapStageAgentEvent(event: StageAgentEvent, nextId: () => string): Histo
   const sid = event.stageId;
   switch (se.kind) {
     case "message":
-      return [{ kind: "assistant_message", id: nextId(), text: se.content }];
+      return [{ kind: "assistant_message", id: nextId(), text: `[${sid}] ${se.content}` }];
     case "tool_use":
       return [{ kind: "tool_use", id: nextId(), text: `[${sid}] ${formatToolCall(se.tool, se.input)}` }];
     case "tool_result":
