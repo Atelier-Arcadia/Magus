@@ -96,20 +96,37 @@ function boxCells(row: number, col: number, innerWidth: number, stage: Stage): C
   ];
 }
 
-// ── Connector cells ────────────────────────────────────────────────────────────────────
+// ── Global edge collection ──────────────────────────────────────────────────────────────
 
-function edgeList(
-  parentLayer: Stage[],
-  childLayer: Stage[],
+type GlobalEdge = Readonly<{
+  srcCol: number;
+  dstCol: number;
+  srcLayer: number;
+  dstLayer: number;
+}>;
+
+function globalEdgeList(
+  layers: ReadonlyArray<ReadonlyArray<Stage>>,
   centerOf: ReadonlyMap<string, number>,
-): ReadonlyArray<[number, number]> {
-  const parentIds = new Set(parentLayer.map((s) => s.id));
-  return childLayer.flatMap((child) =>
-    child.dependencies
-      .filter((depId) => parentIds.has(depId))
-      .map((depId) => [centerOf.get(depId)!, centerOf.get(child.id)!] as [number, number]),
+): ReadonlyArray<GlobalEdge> {
+  const layerOf = new Map<string, number>();
+  layers.forEach((layer, li) => layer.forEach((s) => layerOf.set(s.id, li)));
+
+  return layers.flatMap((layer, dstLi) =>
+    layer.flatMap((stage) =>
+      stage.dependencies
+        .filter((depId) => layerOf.has(depId))
+        .map((depId): GlobalEdge => ({
+          srcCol: centerOf.get(depId)!,
+          dstCol: centerOf.get(stage.id)!,
+          srcLayer: layerOf.get(depId)!,
+          dstLayer: dstLi,
+        })),
+    ),
   );
 }
+
+// ── Connector cells ────────────────────────────────────────────────────────────────────
 
 function spanBits(pCol: number, cCol: number): ReadonlyArray<[number, number]> {
   if (pCol === cCol) return [];
@@ -190,15 +207,44 @@ function allBoxCells(layers: Stage[][], metrics: Metrics): Cells {
   });
 }
 
+function passThroughCells(row: number, col: number, height: number): Cells {
+  return Array.from({ length: height }, (_, i) => ({ row: row + i, col, char: "│" }));
+}
+
 function allConnectorCells(
   layers: Stage[][],
   centerOf: Map<string, number>,
   metrics: Metrics,
 ): Cells {
-  return layers.slice(0, -1).flatMap((layer, li) => {
-    const startRow = li * (metrics.boxHeight + metrics.connectorZoneHeight) + metrics.boxHeight;
-    return connectorCells(startRow, edgeList(layer, layers[li + 1], centerOf));
-  });
+  const edges = globalEdgeList(layers, centerOf);
+  const stride = metrics.boxHeight + metrics.connectorZoneHeight;
+  const cells: Cell[] = [];
+
+  for (let zi = 0; zi < layers.length - 1; zi++) {
+    const connStart = zi * stride + metrics.boxHeight;
+
+    // Pass-through lines in this connector zone (edges that continue past layer zi+1)
+    const passing = edges.filter((e) => e.srcLayer <= zi && e.dstLayer > zi + 1);
+    for (const e of passing) {
+      cells.push(...passThroughCells(connStart, e.srcCol, metrics.connectorZoneHeight));
+    }
+
+    // Pass-through lines in the box layer below (layer zi+1) for edges continuing further
+    if (zi + 1 < layers.length - 1) {
+      const boxStart = (zi + 1) * stride;
+      for (const e of passing) {
+        cells.push(...passThroughCells(boxStart, e.srcCol, metrics.boxHeight));
+      }
+    }
+
+    // Edges terminating at layer zi+1 (both adjacent and cross-layer) — rendered with junction routing
+    const terminating: [number, number][] = edges
+      .filter((e) => e.dstLayer === zi + 1)
+      .map((e) => [e.srcCol, e.dstCol]);
+    cells.push(...connectorCells(connStart, terminating));
+  }
+
+  return cells;
 }
 
 // ── Layer computation ────────────────────────────────────────────────────────────────────
