@@ -131,6 +131,7 @@ export type DrainEventsDeps = {
   readonly RESET: string;
   readonly DIM: string;
   readonly CYAN: string;
+  readonly exit: (code: number) => void;
 };
 
 const defaultDrainEventsDeps: DrainEventsDeps = {
@@ -139,6 +140,7 @@ const defaultDrainEventsDeps: DrainEventsDeps = {
   RESET,
   DIM,
   CYAN,
+  exit: process.exit,
 };
 
 export async function drainEvents(
@@ -169,10 +171,72 @@ export async function drainEvents(
         const normalized = answer.trim().toLowerCase();
         if (normalized === "y" || normalized === "yes") {
           event.resolve({ approved: true });
+        } else if (normalized === "n" || normalized === "no") {
+          console.log("Plan rejected. Exiting.");
+          deps.exit(0);
+          return;
         } else {
           event.resolve({ approved: false, feedback: answer });
         }
       }
     }
   }
+}
+
+// ── Signal handler (double-Ctrl+C confirmation) ────────────────────────────
+
+export type SignalHandlerDeps = {
+  readonly write: (message: string) => void;
+  readonly exit: (code: number) => void;
+  readonly YELLOW: string;
+  readonly RESET: string;
+  readonly timeoutMs?: number;
+};
+
+const DOUBLE_SIGNAL_WARNING = "\nPress Ctrl+C again to exit.";
+
+const scheduleReset = (
+  onReset: () => void,
+  ms: number,
+): ReturnType<typeof setTimeout> => setTimeout(onReset, ms);
+
+/**
+ * Install SIGINT and SIGTERM handlers that require a double-signal confirmation
+ * before exiting. On the first signal a warning is printed; on a second signal
+ * arriving within `timeoutMs` milliseconds the `exit` callback is invoked.
+ * After the timeout expires without a second signal the state resets so the
+ * next signal is treated as a first signal again.
+ *
+ * @returns A cleanup function that removes the handlers and clears any
+ *          pending reset timer.
+ */
+export function installSignalHandlers(deps: SignalHandlerDeps): () => void {
+  const ms = deps.timeoutMs ?? 3000;
+  let receivedFirst = false;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  const resetState = (): void => {
+    receivedFirst = false;
+    timer = null;
+  };
+
+  const handleSignal = (): void => {
+    if (receivedFirst) {
+      if (timer !== null) clearTimeout(timer);
+      deps.exit(1);
+      return;
+    }
+    receivedFirst = true;
+    deps.write(`${deps.YELLOW}${DOUBLE_SIGNAL_WARNING}${deps.RESET}`);
+    timer = scheduleReset(resetState, ms);
+  };
+
+  process.on("SIGINT", handleSignal);
+  process.on("SIGTERM", handleSignal);
+
+  return (): void => {
+    if (timer !== null) clearTimeout(timer);
+    process.off("SIGINT", handleSignal);
+    process.off("SIGTERM", handleSignal);
+  };
 }

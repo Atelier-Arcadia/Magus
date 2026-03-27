@@ -39,6 +39,7 @@ const testDeps: DrainEventsDeps = {
   RESET: "<RESET>",
   DIM: "<DIM>",
   CYAN: "<CYAN>",
+  exit: () => {},
 };
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -154,5 +155,64 @@ describe("drainEvents", () => {
     mockAnswer = "no, please add a test step";
     await drainEvents(emitEvents([event]), noopId, false, false, false, testDeps);
     expect(resolveMock).toHaveBeenCalledWith({ approved: false, feedback: "no, please add a test step" });
+  });
+
+  test("calls exit(0) and does not resolve when user enters 'n'", async () => {
+    const resolveMock = mock(() => {});
+    const exitMock = mock(() => {});
+    const event = { kind: "plan_approval_request", resolve: resolveMock, plan: {}, renderedPlan: "" };
+    mockAnswer = "n";
+    await drainEvents(emitEvents([event]), noopId, false, false, false, { ...testDeps, exit: exitMock });
+    expect(exitMock).toHaveBeenCalledWith(0);
+    expect(resolveMock).not.toHaveBeenCalled();
+  });
+
+  test("calls exit(0) and does not resolve when user enters 'no'", async () => {
+    const resolveMock = mock(() => {});
+    const exitMock = mock(() => {});
+    const event = { kind: "plan_approval_request", resolve: resolveMock, plan: {}, renderedPlan: "" };
+    mockAnswer = "no";
+    await drainEvents(emitEvents([event]), noopId, false, false, false, { ...testDeps, exit: exitMock });
+    expect(exitMock).toHaveBeenCalledWith(0);
+    expect(resolveMock).not.toHaveBeenCalled();
+  });
+
+  test("calls exit(0) and does not resolve when user enters 'N'", async () => {
+    const resolveMock = mock(() => {});
+    const exitMock = mock(() => {});
+    const event = { kind: "plan_approval_request", resolve: resolveMock, plan: {}, renderedPlan: "" };
+    mockAnswer = "N";
+    await drainEvents(emitEvents([event]), noopId, false, false, false, { ...testDeps, exit: exitMock });
+    expect(exitMock).toHaveBeenCalledWith(0);
+    expect(resolveMock).not.toHaveBeenCalled();
+  });
+
+  test("calls exit(0) and does not resolve when user enters 'No'", async () => {
+    const resolveMock = mock(() => {});
+    const exitMock = mock(() => {});
+    const event = { kind: "plan_approval_request", resolve: resolveMock, plan: {}, renderedPlan: "" };
+    mockAnswer = "No";
+    await drainEvents(emitEvents([event]), noopId, false, false, false, { ...testDeps, exit: exitMock });
+    expect(exitMock).toHaveBeenCalledWith(0);
+    expect(resolveMock).not.toHaveBeenCalled();
+  });
+
+  test("calls exit(0) and does not resolve when user enters 'NO'", async () => {
+    const resolveMock = mock(() => {});
+    const exitMock = mock(() => {});
+    const event = { kind: "plan_approval_request", resolve: resolveMock, plan: {}, renderedPlan: "" };
+    mockAnswer = "NO";
+    await drainEvents(emitEvents([event]), noopId, false, false, false, { ...testDeps, exit: exitMock });
+    expect(exitMock).toHaveBeenCalledWith(0);
+    expect(resolveMock).not.toHaveBeenCalled();
+  });
+
+  test("logs a cancellation message before calling exit when user enters 'n'", async () => {
+    const resolveMock = mock(() => {});
+    const exitMock = mock(() => {});
+    const event = { kind: "plan_approval_request", resolve: resolveMock, plan: {}, renderedPlan: "" };
+    mockAnswer = "n";
+    await drainEvents(emitEvents([event]), noopId, false, false, false, { ...testDeps, exit: exitMock });
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("rejected"));
   });
 });

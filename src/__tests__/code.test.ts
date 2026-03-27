@@ -8,6 +8,7 @@ import {
   parseVerbose,
   parseHelp,
   readPrompt,
+  installSignalHandlers,
 } from "../code-helpers";
 import { formatHelp } from "../ui/help";
 
@@ -286,5 +287,141 @@ describe("formatHelp", () => {
 
   test("mentions --help / -h flag", () => {
     expect(formatHelp()).toContain("--help");
+  });
+});
+
+// ── installSignalHandlers ──────────────────────────────────────────────────
+
+describe("installSignalHandlers", () => {
+  test("first SIGINT prints warning message and does not call exit", () => {
+    const writes: string[] = [];
+    const exits: number[] = [];
+    const cleanup = installSignalHandlers({
+      write: (msg) => writes.push(msg),
+      exit: (code) => exits.push(code),
+      YELLOW: "[Y]",
+      RESET: "[R]",
+      timeoutMs: 5000,
+    });
+    try {
+      process.emit("SIGINT");
+      expect(writes).toHaveLength(1);
+      expect(writes[0]).toContain("Press Ctrl+C again to exit");
+      expect(exits).toHaveLength(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("first SIGTERM prints warning message and does not call exit", () => {
+    const writes: string[] = [];
+    const exits: number[] = [];
+    const cleanup = installSignalHandlers({
+      write: (msg) => writes.push(msg),
+      exit: (code) => exits.push(code),
+      YELLOW: "[Y]",
+      RESET: "[R]",
+      timeoutMs: 5000,
+    });
+    try {
+      process.emit("SIGTERM");
+      expect(writes).toHaveLength(1);
+      expect(writes[0]).toContain("Press Ctrl+C again to exit");
+      expect(exits).toHaveLength(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("second SIGINT within the timeout window calls exit with code 1", () => {
+    const exits: number[] = [];
+    const cleanup = installSignalHandlers({
+      write: () => {},
+      exit: (code) => exits.push(code),
+      YELLOW: "",
+      RESET: "",
+      timeoutMs: 5000,
+    });
+    try {
+      process.emit("SIGINT");
+      process.emit("SIGINT");
+      expect(exits).toEqual([1]);
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("second SIGTERM after first SIGINT within the timeout window calls exit with code 1", () => {
+    const exits: number[] = [];
+    const cleanup = installSignalHandlers({
+      write: () => {},
+      exit: (code) => exits.push(code),
+      YELLOW: "",
+      RESET: "",
+      timeoutMs: 5000,
+    });
+    try {
+      process.emit("SIGINT");
+      process.emit("SIGTERM");
+      expect(exits).toEqual([1]);
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("warning message wraps text with YELLOW and RESET color codes", () => {
+    const writes: string[] = [];
+    const cleanup = installSignalHandlers({
+      write: (msg) => writes.push(msg),
+      exit: () => {},
+      YELLOW: "\x1b[33m",
+      RESET: "\x1b[0m",
+      timeoutMs: 5000,
+    });
+    try {
+      process.emit("SIGINT");
+      expect(writes[0]).toMatch(/^\x1b\[33m/);
+      expect(writes[0]).toMatch(/\x1b\[0m$/);
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("after timeout elapses, the next signal is treated as a first signal again", async () => {
+    const writes: string[] = [];
+    const exits: number[] = [];
+    const cleanup = installSignalHandlers({
+      write: (msg) => writes.push(msg),
+      exit: (code) => exits.push(code),
+      YELLOW: "",
+      RESET: "",
+      timeoutMs: 20,
+    });
+    try {
+      process.emit("SIGINT");
+      expect(writes).toHaveLength(1);
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      process.emit("SIGINT");
+      expect(writes).toHaveLength(2);
+      expect(exits).toHaveLength(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  test("cleanup removes signal handlers so subsequent signals have no effect", () => {
+    const writes: string[] = [];
+    const exits: number[] = [];
+    const cleanup = installSignalHandlers({
+      write: (msg) => writes.push(msg),
+      exit: (code) => exits.push(code),
+      YELLOW: "",
+      RESET: "",
+      timeoutMs: 5000,
+    });
+    cleanup();
+    process.emit("SIGINT");
+    expect(writes).toHaveLength(0);
+    expect(exits).toHaveLength(0);
   });
 });
