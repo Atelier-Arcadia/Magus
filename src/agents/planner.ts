@@ -50,6 +50,8 @@ Stages should require modifying no more than 6 files each and describe a specifi
 
 Each stage in the plan will be implemented by a distinct coder agent that will not have the same context as you.  Thus, each stage's plan must identify exactly what that coder must do and must not do.  Use the information you have about the complete plan to reflect on and tightly scope the work for each coder.
 
+In order to parallelize work further, design the interfaces that each coder can build around.  Avoid serializing work by creating plans that require one coder to build something and then another coder to use it.  Instead, define the interface-- for instance, in terms of literal interface types-- that will be implemented by one coder and used by another up front.  Include these interfaces in the prompts for each coder so that they can run concurrently under the assumption that the interfaces will be implemented as described.
+
 Step 3: Order the Dependencies
 
 Your plans will be constructed ìinto a Directed Acyclic Graph (DAG) of dependent stages.  Prefer simplicity and paarallelism over serial steps.

@@ -1,7 +1,7 @@
 import { createAgent } from "./common";
 import { editFileTool } from "../tools/edit";
 import { createFileTool } from "../tools/create-file";
-import { packageScriptTool } from "../tools/package-script";
+import { makefileTool } from "../tools/makefile";
 import type { MessageQueue } from "../message-queue";
 
 // ── System prompt ───────────────────────────────────────────────────────────
@@ -94,7 +94,7 @@ export function createCoder(queue: MessageQueue) {
   return createAgent({
     systemPrompt: SYSTEM_PROMPT,
     tools: ["Read", "Glob", "Grep"],
-    mcpTools: [editFileTool(queue), createFileTool(queue), packageScriptTool(queue)],
+    mcpTools: [editFileTool(queue), createFileTool(queue), makefileTool(queue)],
     options: { model: "claude-sonnet-4-6" },
   });
 }

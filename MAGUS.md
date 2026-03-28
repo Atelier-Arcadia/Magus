@@ -59,11 +59,9 @@ src/
   tools/
     edit.ts             — EditFile: line-range splice with diff output
     create-file.ts      — CreateFile: create empty file with mkdir -p
-    delete-file.ts      — (empty — unused)
-    package-script.ts   — PackageScript: run package.json scripts via bun
+    makefile.ts         — Makefile: run Makefile targets via make
     date.ts             — Date: returns current date/time as structured JSON
     plan-stage.ts       — (empty — removed, was replaced by structured output)
-
   ui/
     mapEvent.ts         — Pure mapper: OrchestratorEvent → HistoryEntry[]
     types.ts            — HistoryEntry discriminated union type
@@ -87,7 +85,7 @@ src/
 
 ### Coder (`src/agents/coder.ts`)
 - **Model**: Claude Sonnet
-- **Tools**: Read, Glob, Grep + MCP tools (EditFile, CreateFile, PackageScript)
+- **Tools**: Read, Glob, Grep + MCP tools (EditFile, CreateFile, Makefile)
 - **Output**: Free-text summary of work completed.
 - **Behaviour**: Strict TDD (red→green→refactor). Pure functional style: small functions (≤12 lines), immutable data, controlled side effects, higher-order functions.
 - **Context passing**: Receives summaries from completed dependency stages prepended to its prompt.

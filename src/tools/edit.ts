@@ -1,9 +1,17 @@
 import { tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { readFile, writeFile } from "fs/promises";
+import { basename } from "path";
 import { createPatch } from "diff";
 import { formatDiff } from "../ui/format-diff";
 import type { MessageQueue } from "../message-queue";
+
+/** Pattern covering all common Makefile naming conventions. */
+const MAKEFILE_BASENAME_RE = /^(Makefile|makefile|GNUmakefile)(\..+)?$/;
+
+/** Pure predicate – true when a file path refers to a Makefile variant. */
+const isMakefilePath = (filePath: string): boolean =>
+  MAKEFILE_BASENAME_RE.test(basename(filePath));
 
 export function editFileTool(queue: MessageQueue) {
   return tool(
@@ -32,6 +40,13 @@ export function editFileTool(queue: MessageQueue) {
     },
     async ({ file_path, range, text }) => {
       queue.push({ kind: "edit", message: `modifying ${file_path}` });
+
+      if (isMakefilePath(file_path)) {
+        return {
+          content: [{ type: "text" as const, text: "Error: editing Makefile files is not permitted." }],
+          isError: true,
+        };
+      }
 
       const [start, end] = range;
 
