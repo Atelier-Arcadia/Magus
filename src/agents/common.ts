@@ -1,3 +1,4 @@
+import { join, dirname } from "node:path";
 import {
   query,
   createSdkMcpServer,
@@ -5,6 +6,19 @@ import {
   type SdkMcpToolDefinition,
   type SDKMessage,
 } from "@anthropic-ai/claude-agent-sdk";
+
+// ── CLI path resolution ─────────────────────────────────────────────────────
+//
+// When compiled with `bun build --compile`, import.meta.url points inside a
+// virtual filesystem (/$bunfs/root/…) so the SDK cannot resolve its bundled
+// cli.js. We detect this at runtime and fall back to a cli.js co-located with
+// the binary on disk.
+
+function resolveCliPath(): string | undefined {
+  // Only needed inside a compiled Bun binary
+  if (!import.meta.url.startsWith("file:///$bunfs/")) return undefined;
+  return join(dirname(process.execPath), "cli.js");
+}
 
 // ── Event types ──────────────────────────────────────────────────────────────
 
@@ -86,6 +100,8 @@ export function createAgent(config: AgentConfig) {
   );
   const allowedTools = [...config.tools, ...mcpToolNames];
 
+  const cliPath = resolveCliPath();
+
   return async function* run(context: AgentContext): AsyncGenerator<AgentEvent> {
     for await (const message of query({
       prompt: context.prompt,
@@ -95,6 +111,7 @@ export function createAgent(config: AgentConfig) {
         tools: config.tools,
         allowedTools,
         cwd: context.cwd,
+        ...(cliPath ? { pathToClaudeCodeExecutable: cliPath } : {}),
         ...(mcpServers ? { mcpServers } : {}),
         ...(context.sessionId ? { resume: context.sessionId } : {}),
       },

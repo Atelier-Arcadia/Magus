@@ -9,9 +9,10 @@ Requires [Bun](https://bun.sh) v1.3+.
 ```bash
 bun install
 bun build src/magus.ts --compile
+cp node_modules/@anthropic-ai/claude-agent-sdk/cli.js .
 ```
 
-This produces a standalone `magus` binary in the project root.
+This produces a standalone `magus` binary in the project root, alongside `cli.js` (the bundled Claude Code runtime required by the Agent SDK). Both files must be kept together.
 
 To run tests:
 
