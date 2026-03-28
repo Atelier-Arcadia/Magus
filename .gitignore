@@ -6,6 +6,10 @@ out
 dist
 *.tgz
 
+# compiled binary & SDK runtime (build artifacts)
+/magus
+/cli.js
+
 # code coverage
 coverage
 *.lcov
