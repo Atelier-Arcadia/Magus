@@ -1,0 +1,14 @@
+{
+  "name": "magus",
+  "owner": {
+    "name": "Arcadia Rose",
+    "email": "chaotic.smol@proton.me"
+  },
+  "plugins": [
+    {
+      "name": "magus",
+      "source": "./",
+      "description": "Invoke the Magus CLI to implement coding tasks."
+    }
+  ]
+}

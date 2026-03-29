@@ -1,0 +1,5 @@
+{
+  "name": "magus",
+  "description": "A coding agent that runs parallelizable tasks concurrently and records learnings after each task",
+  "version": "0.0.1"
+}
